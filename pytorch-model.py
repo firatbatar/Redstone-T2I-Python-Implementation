@@ -1,5 +1,5 @@
 """
-RedstoneTransformer - Text-to-Image (64x64 binary)
+RedstoneTransformer - Text-to-Image (32x32 binary, CIFAR-100)
 A small encoder-decoder transformer designed for eventual Minecraft implementation.
 Target: ~2-5M parameters.
 """
@@ -9,20 +9,21 @@ import math
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
-from PIL import Image
 from tqdm.auto import tqdm
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
+import torchvision
+import torchvision.transforms as transforms
 
 # ============================================================
 # Config
 # ============================================================
 
-IMG_SIZE = 64
-NUM_PIXELS = IMG_SIZE * IMG_SIZE  # 4096
+IMG_SIZE = 32
+NUM_PIXELS = IMG_SIZE * IMG_SIZE  # 1024
 MAX_TEXT_LEN = 32
 NUM_BINS = 2  # binary: 0 (black), 1 (white)
 BOS_TOKEN = 2  # decoder start token (outside 0/1 pixel range)
@@ -80,17 +81,10 @@ class SimpleTokenizer:
 # Dataset
 # ============================================================
 
-def load_image_binary(path):
-    """Load image, convert to 64x64 binary (0 or 1)."""
-    img = Image.open(path).convert("L").resize((IMG_SIZE, IMG_SIZE))
-    arr = np.array(img)
-    return (arr >= 128).astype(np.uint8).flatten()  # 0=black, 1=white
-
-
 class TextImageDataset(Dataset):
     def __init__(self, prompts, pixels):
         self.prompts = prompts  # list of token lists
-        self.pixels = pixels    # list of np arrays (4096,)
+        self.pixels = pixels    # list of np arrays (1024,)
 
     def __len__(self):
         return len(self.prompts)
@@ -102,28 +96,37 @@ class TextImageDataset(Dataset):
         )
 
 
-def load_dataset(data_dir):
-    """Load dataset from a directory containing samples.csv and images.
+def load_cifar100():
+    """Load CIFAR-100 as grayscale, threshold to binary pixels, and generate text prompts."""
+    transform = transforms.Compose([
+        transforms.Grayscale(num_output_channels=1),
+        transforms.ToTensor(),
+    ])
 
-    Expects CSV with columns: prompt, image_relpath
-    """
-    import pandas as pd
+    trainset = torchvision.datasets.CIFAR100(
+        root='./data', train=True, download=True, transform=transform,
+    )
+    testset = torchvision.datasets.CIFAR100(
+        root='./data', train=False, download=True, transform=transform,
+    )
+    classes = trainset.classes
 
-    csv_path = os.path.join(data_dir, "samples.csv")
-    df = pd.read_csv(csv_path)
+    def extract(dataset, desc):
+        prompts = []
+        pixels = []
+        for img_tensor, label in tqdm(dataset, desc=desc):
+            # img_tensor is (1, 32, 32) in [0, 1]
+            arr = img_tensor.squeeze(0).numpy()  # (32, 32)
+            binary = (arr >= 0.5).astype(np.uint8).flatten()  # threshold to 0/1
+            label_name = classes[label].replace('_', ' ')
+            prompts.append(f"a photo of a {label_name}")
+            pixels.append(binary)
+        return prompts, pixels
 
-    prompts = []
-    pixels = []
+    train_prompts, train_pixels = extract(trainset, "Loading CIFAR-100 train")
+    test_prompts, test_pixels = extract(testset, "Loading CIFAR-100 test")
 
-    for _, row in tqdm(df.iterrows(), total=len(df), desc="Loading images"):
-        img_path = os.path.join(data_dir, row["image_relpath"])
-        if not os.path.exists(img_path):
-            continue
-        px = load_image_binary(img_path)
-        prompts.append(row["prompt"])
-        pixels.append(px)
-
-    return prompts, pixels
+    return train_prompts, train_pixels, test_prompts, test_pixels
 
 # ============================================================
 # Model
@@ -281,7 +284,7 @@ def train_model(model, train_loader, val_loader, epochs, device, lr=1e-3):
 
 @torch.no_grad()
 def generate_image(model, prompt, tokenizer, device="cpu", temperature=0.8):
-    """Generate a 64x64 binary image from a text prompt, pixel by pixel."""
+    """Generate a 32x32 binary image from a text prompt, pixel by pixel."""
     model.eval()
     model.to(device)
 
@@ -322,7 +325,6 @@ def display_image(img, title="Generated"):
 
 def main():
     parser = argparse.ArgumentParser(description="RedstoneTransformer T2I")
-    parser.add_argument("--data_dir", type=str, required=True, help="Directory with samples.csv + images")
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-3)
@@ -338,13 +340,14 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    # --- Load data ---
-    prompts, pixels = load_dataset(args.data_dir)
-    print(f"Loaded {len(prompts)} samples")
+    # --- Load CIFAR-100 ---
+    train_prompts, train_pixels, test_prompts, test_pixels = load_cifar100()
+    all_prompts = train_prompts + test_prompts
+    print(f"Loaded {len(train_prompts)} train, {len(test_prompts)} test samples")
 
     # --- Tokenizer ---
     tokenizer = SimpleTokenizer()
-    tokenizer.build_vocab(prompts)
+    tokenizer.build_vocab(all_prompts)
     print(f"Vocabulary size: {tokenizer.vocab_size}")
 
     # --- Build model ---
@@ -364,26 +367,19 @@ def main():
 
     # --- Generate mode ---
     if args.generate:
-        tokenizer_path = os.path.join(args.data_dir, "vocab.txt")
-        if os.path.exists(tokenizer_path):
-            tokenizer.load(tokenizer_path)
+        vocab_path = "vocab.txt"
+        if os.path.exists(vocab_path):
+            tokenizer.load(vocab_path)
         img = generate_image(model, args.generate, tokenizer, device=device)
         display_image(img, title=args.generate)
         return
 
-    # --- Train/val split (90/10) ---
-    n = len(prompts)
-    indices = np.random.RandomState(42).permutation(n)
-    split = int(0.9 * n)
-    train_idx, val_idx = indices[:split], indices[split:]
-
-    train_tokens = [tokenizer.encode(prompts[i]) for i in train_idx]
-    val_tokens = [tokenizer.encode(prompts[i]) for i in val_idx]
-    train_pixels = [pixels[i] for i in train_idx]
-    val_pixels = [pixels[i] for i in val_idx]
+    # --- Tokenize ---
+    train_tokens = [tokenizer.encode(p) for p in tqdm(train_prompts, desc="Tokenizing train")]
+    val_tokens = [tokenizer.encode(p) for p in tqdm(test_prompts, desc="Tokenizing test")]
 
     train_ds = TextImageDataset(train_tokens, train_pixels)
-    val_ds = TextImageDataset(val_tokens, val_pixels)
+    val_ds = TextImageDataset(val_tokens, test_pixels)
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size)
 
@@ -393,16 +389,16 @@ def main():
     model = train_model(model, train_loader, val_loader, args.epochs, device, args.lr)
 
     # --- Save tokenizer ---
-    tokenizer.save(os.path.join(args.data_dir, "vocab.txt"))
+    tokenizer.save("vocab.txt")
 
     # --- Generate a sample ---
-    test_prompt = prompts[val_idx[0]]
+    test_prompt = test_prompts[0]
     print(f"\nGenerating for: '{test_prompt}'")
     img = generate_image(model, test_prompt, tokenizer, device=device)
     display_image(img, title=test_prompt)
 
     # Show ground truth for comparison
-    gt = pixels[val_idx[0]].reshape(IMG_SIZE, IMG_SIZE)
+    gt = test_pixels[0].reshape(IMG_SIZE, IMG_SIZE)
     display_image(gt, title="Ground Truth")
 
 
