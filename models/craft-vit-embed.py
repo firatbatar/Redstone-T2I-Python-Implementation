@@ -15,8 +15,8 @@ from torch.utils.data import Dataset, DataLoader
 # ---------------------------------------------------------------------------
 
 CRAFT_VIT_CONFIG = {
-    "vocab_size":       512,    # text vocabulary (built from training data)
-    "num_bins":         2,      # distinct pixel values (2 = binary black/white)
+    "vocab_size":       364,    # vocabulary consists of 345 words, a separator '|', [PAD], [POS] and the possible pixel values (0-15)
+    "num_bins":         16,     # distinct pixel values (2 = binary black/white)
     "img_size":         32,     # image is img_size x img_size pixels
     "text_max_len":     32,     # max number of text tokens
     "emb_dim":          256,    # embedding dimension for all layers
@@ -28,7 +28,7 @@ CRAFT_VIT_CONFIG = {
 
 # Derived fields — computed once here rather than scattered through the model
 CRAFT_VIT_CONFIG["img_seq_len"] = CRAFT_VIT_CONFIG["img_size"] ** 2   # 1024
-CRAFT_VIT_CONFIG["bos_token"]   = CRAFT_VIT_CONFIG["num_bins"]         # index just past pixel values
+CRAFT_VIT_CONFIG["bos_token"]   = CRAFT_VIT_CONFIG["num_bins"]        # index just past pixel values
 
 
 # ---------------------------------------------------------------------------
