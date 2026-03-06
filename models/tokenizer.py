@@ -6,7 +6,7 @@ class MinecraftTokenizer:
     def __init__(self, vocab):
         self.word_to_id = {word: i for i, word in enumerate(vocab)}
         self.sep_id = len(vocab)
-        # Map 0-15 grayscale to unique IDs starting after the separator
+        # Map 0-1 grayscale to unique IDs starting after the separator
         self.pixel_start_id = self.sep_id + 1
 
     def encode(self, word, pixel_array):
