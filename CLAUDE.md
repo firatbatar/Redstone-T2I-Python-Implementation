@@ -20,7 +20,7 @@ The `.venv` is located inside `models/` and contains all dependencies (torch, et
 
 All source files live in `models/`:
 
-- **`tokenizer.py`** — `MinecraftTokenizer`: encodes a class word + pixel array into a flat token sequence: `[word_id, sep_id, pixel_id_0, ..., pixel_id_N]`. Pixel values (0–15 grayscale) are offset by `pixel_start_id` to avoid collision with word tokens.
+- **`tokenizer.py`** — `MinecraftTokenizer`: encodes a class word + pixel array into a flat token sequence: `[word_id, sep_id, pixel_id_0, ..., pixel_id_N]`. Pixel values are binary (0 = white, 1 = black) and offset by `pixel_start_id` to avoid collision with word tokens. `model.py` quantizes raw 0/255 values to 0/1 before encoding.
 - **`dataset_loader.py`** — `MinecraftDataset` / `MinecraftDataloader`: sliding-window dataset over token sequences. Currently incomplete (dataloader doesn't return the DataLoader object).
 - **`transformerblock.py`** — `TransformerBlock`, `MultiHeadAttention`, `LayerNorm`, `GELU`, `FeedForward`. Standard decoder-only transformer components with causal mask.
 - **`model.py`** — `MinecraftGPT`: GPT-style model using the above blocks. Entry point for running/testing. Contains an inline pixel array at the top used as a test sample.
@@ -42,8 +42,6 @@ cfg = {
 
 ## Known Issues / In-Progress
 
-- `model.py`: `forward()` has a bug — `batch_size = seq_len = in_idx.shape` unpacks incorrectly for 2D input; `self.out_head` should be `self.output_layer`.
-- `transformerblock.py`: `queries` and `values` are both assigned from `keys` after the `.view()` reshape (copy-paste bug).
-- `dataset_loader.py`: `MinecraftDataloader` never returns the created DataLoader.
+- `dataset_loader.py`: `MinecraftDataloader` never returns the created DataLoader; also `MinecraftDataset` calls `tokenizer.encode(txt)` with wrong signature (requires `word` + `pixel_array`).
 - No training loop implemented yet.
 - No model checkpointing.
