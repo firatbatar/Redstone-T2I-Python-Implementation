@@ -19,7 +19,7 @@ tokenizer = MinecraftTokenizer(vocab)
 
 
 cfg = {
-    "vocab_size": 348,
+    "vocab_size": 347,   # 345 classes + black and white bits
     "context_length": 256,
     "emb_dim": 256,      # can test 128,256,512. increase leads to overfit.
     "n_heads": 8,
@@ -59,6 +59,9 @@ total_params = sum(p.numel() for p in model.parameters())
 print(f"Total number of parameters: {total_params:,}")
 
 
+"""
+Below is code for testing functionality of model.
+"""
 def generate_text_simple(model, idx, max_new_tokens, context_size):
     for _ in range(max_new_tokens):
         idx_cond = idx[:, -context_size:]
@@ -71,10 +74,6 @@ def generate_text_simple(model, idx, max_new_tokens, context_size):
         idx = torch.cat((idx, idx_next), dim=1)
 
     return idx
-
-"""
-Below is code for training.
-"""
 
 encoded = tokenizer.encode("apple", pixel_arr)
 print("encoded:", encoded)
