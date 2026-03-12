@@ -38,6 +38,16 @@ This executes the `_main()` function in `models/model.py`, which:
 3. Encodes a sample pixel array with the label `"apple"`
 4. Runs a simple greedy generation and prints the output
 
+## Training
+
+> **Note:** The training module is a placeholder and is not yet fully implemented.
+
+From the **project root** directory, run:
+
+```bash
+python -m training
+```
+
 ## Project Structure
 
 ```
@@ -50,6 +60,9 @@ This executes the `_main()` function in `models/model.py`, which:
 │   ├── dataset_loader.py    # Dataset and DataLoader utilities
 │   ├── transformerblock.py  # Transformer block components
 │   └── vocab.txt            # Class labels vocabulary (345 entries)
+├── training/
+│   ├── __init__.py          # Package entry point, exposes main()
+│   └── __main__.py          # Enables `python -m training`
 ├── requirements.txt
 └── README.md
 ```
