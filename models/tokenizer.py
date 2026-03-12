@@ -18,3 +18,5 @@ class MinecraftTokenizer:
         # Slice the tensor to get only the pixel part
         pixel_ids = token_ids[1:]
         return [p - self.pixel_start_id for p in pixel_ids]
+
+__all__ = ["MinecraftTokenizer"]

@@ -1,6 +1,6 @@
 import torch
-from tokenizer import MinecraftTokenizer
 from torch.utils.data import Dataset, DataLoader
+from .tokenizer import MinecraftTokenizer
 
 class MinecraftDataset(Dataset):
     def __init__(self, txt, tokenizer, max_length, stride):
@@ -29,4 +29,4 @@ def MinecraftDataloader(txt, tokenizer, batch_size=4, max_length=256, stride=128
                             num_workers=num_workers
                             )
 
-
+__all__ = ["MinecraftDataloader"]
