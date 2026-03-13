@@ -32,7 +32,7 @@ class QuickdrawManager:
     def sample_images(self,
         n: int,
         seed: int | None = None,
-    ):
+    ) -> list[tuple[str, np.ndarray]]:
         total = sum(self.sizes.values())
         # print(f"Found {len(self.sizes)} categories, {total:,} images total")
         n = min(n, total)
@@ -68,14 +68,14 @@ class QuickdrawManager:
 
         return images
     
-    def encode_img_data(label: str, img: np.ndarray):
+    def encode_img_data(label: str, img: np.ndarray) -> tuple[str, int]:
         """Pack image data into a single integer."""
         img_list = img.reshape(-1).astype(str).tolist()
         img_str = "".join(img_list)
         img_int = int(img_str, 2)
         return (label, img_int)
 
-    def decode_img_data(data: tuple[str, int]):
+    def decode_img_data(data: tuple[str, int]) -> tuple[str, np.ndarray[int]]:
         """Unpack image data from a single integer."""
         label, img_int = data
         img_str = bin(img_int)[2:]
