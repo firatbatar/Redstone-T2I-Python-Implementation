@@ -2,8 +2,6 @@ from pathlib import Path
 import json
 import numpy as np
 
-from time import time
-
 DATA_FOLDER = Path(__file__).parent / "quickdraw"
 
 class QuickdrawManager:
@@ -24,7 +22,7 @@ class QuickdrawManager:
 
             (data_folder / "_data_shape.json").write_text(json.dumps(self.sizes))
         
-        self._sizes = self.sizes
+        self._sizes = self.sizes.copy()
         self.unseen_indices = {}
         for category, count in self.sizes.items():
             self.unseen_indices[category] = set(range(count))
@@ -33,16 +31,19 @@ class QuickdrawManager:
         return sum(self.sizes.values())
     
     def reset(self) -> None:
-        self.sizes = self._sizes
+        self.sizes = self._sizes.copy()
         for category in self.sizes.keys():
             self.unseen_indices[category] = set(range(self.sizes[category]))
 
-    def split_by_percentage(self, percentage: float) -> list[tuple[str, np.ndarray]]:
+    def split_by_percentage(self, percentage: float, seed: int | None = None, from_original: bool = True) -> list[tuple[str, np.ndarray]]:
         if not 0 <= percentage <= 1:
             raise ValueError("Percentage must be between 0 and 1.")
+
+        if from_original:
+            self.reset()
         
         n = int(len(self) * percentage)
-        return self.sample_images(n, seed=None)
+        return self.sample_images(n, seed=seed)
 
     def sample_images(self, n: int, seed: int | None = None) -> list[tuple[str, np.ndarray]]:
         total = sum(self.sizes.values())
@@ -51,27 +52,35 @@ class QuickdrawManager:
         rng = np.random.default_rng(seed)
 
         # Sample each category portionally
+        # This calculation still a bit problematic,
+        # but with extra calmping later on it works
         counts = [int(n * s / total) for s in self.sizes.values()]
-        if sum(counts) < n:
-            counts = [int(n * s / total) + 1 for s in self.sizes.values()]
-        counts = counts[:n]
-
-        try:
-            self.sizes = {category: count - counts[i] for i, (category, count) in enumerate(self.sizes.items())}
-        except IndexError:
-            pass
+        deficit = n - sum(counts)
+        if deficit > 0:
+            deficit_indices = rng.choice(len(counts), size=deficit, replace=False)
+            for i in deficit_indices:
+                counts[i] += 1
+        elif deficit < 0:
+            surplus_indices = rng.choice(len(counts), size=-deficit, replace=False)
+            for i in surplus_indices:
+                counts[i] -= 1
 
         # Sample rows per category
         all_images: list[tuple[str, np.ndarray]] = []
 
         for category, count in zip(self.sizes.keys(), counts):
+            actual_count = min(count, self.sizes[category])
+            if actual_count == 0:
+                continue
             npz_path = self.data_folder / f"{category}.npz"
             with np.load(npz_path, mmap_mode="r") as f:
                 arr = f[f.files[0]]
-                indices = rng.choice(list(self.unseen_indices[category]), size=count, replace=False)
+                indices = rng.choice(list(self.unseen_indices[category]), size=actual_count, replace=False)
                 self.unseen_indices[category] -= set(indices)
+                self.sizes[category] -= len(indices)
                 indices.sort()  # sequential access is faster on mmap
-                all_images.append(QuickdrawManager.encode_img_data(category, arr[indices]))
+                for i in indices:
+                    all_images.append(QuickdrawManager.encode_img_data(category, arr[i]))
 
         # Shuffle
         perm = rng.permutation(len(all_images))
@@ -79,6 +88,7 @@ class QuickdrawManager:
 
         return images
     
+    @staticmethod
     def encode_img_data(label: str, img: np.ndarray) -> tuple[str, int]:
         """Pack image data into a single integer."""
         img_list = img.reshape(-1).astype(str).tolist()
@@ -86,10 +96,18 @@ class QuickdrawManager:
         img_int = int(img_str, 2)
         return (label, img_int)
 
+    @staticmethod
     def decode_img_data(data: tuple[str, int]) -> tuple[str, np.ndarray[int]]:
         """Unpack image data from a single integer."""
         label, img_int = data
         img_str = bin(img_int)[2:]
+        if len(img_str) < 28*28:
+            img_str = "0" * (28*28 - len(img_str)) + img_str
+        # I think this is not needed as the bin 
+        # function returns a min length binary string
+        # but just in case
+        elif len(img_str) > 28*28:
+            img_str = img_str[:28*28]
         img_list = [int(x) for x in img_str]
         img = np.array(img_list)
         return label, img
@@ -101,7 +119,7 @@ if __name__ == "__main__":
     seen_imgs = set()
     for i in range(10):
         print(f"Sampling {n:,} images ...")
-        imgs = manager.sample_images(n, seed=42)
+        imgs = manager.sample_images(n, seed=42 + i)
         for img in imgs:
             if img in seen_imgs:
                 print("Duplicate image found!")
