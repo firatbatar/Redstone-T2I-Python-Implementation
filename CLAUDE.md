@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Goal
 
-Transformer-based model that generates images (initially binary/grayscale) from text labels, intended for eventual reimplementation in Minecraft Redstone. Intentionally minimal and simple.
+Transformer-based model that generates images (binary) from text labels, intended for eventual reimplementation in Minecraft Redstone. Intentionally minimal and simple.
 
 ## Running
 
@@ -20,18 +20,19 @@ The `.venv` is located inside `models/` and contains all dependencies (torch, et
 
 All source files live in `models/`:
 
-- **`tokenizer.py`** — `MinecraftTokenizer`: encodes a class word + pixel array into a flat token sequence: `[word_id, sep_id, pixel_id_0, ..., pixel_id_N]`. Pixel values are binary (0 = white, 1 = black) and offset by `pixel_start_id` to avoid collision with word tokens. `model.py` quantizes raw 0/255 values to 0/1 before encoding.
-- **`dataset_loader.py`** — `MinecraftDataset` / `MinecraftDataloader`: sliding-window dataset over token sequences. Currently incomplete (dataloader doesn't return the DataLoader object).
+- **`quickdraw_manager.py`** — `QuickdrawManager`: loads `.npz` files from `models/quickdraw/`, caches category sizes in `_data_shape.json`. `sample_images(n, seed)` returns proportionally sampled `(label, encoded_int)` tuples without replacement across calls, using `unseen_indices` to track what's been seen. Images are packed into a single integer via `encode_img_data` (binary pixel string → int) and unpacked with `decode_img_data`.
+- **`tokenizer.py`** — `MinecraftTokenizer`: `encode(img_data: tuple[str, int])` decodes the packed image integer back to a pixel array via `QuickdrawManager.decode_img_data`, then produces a flat token sequence `[word_id, pixel_id_0, ..., pixel_id_783]`. Pixel values (0/1) are offset by `pixel_start_id = 345` to avoid collision with word tokens. `decode_pixels` reverses the pixel portion.
+- **`dataset_loader.py`** — `MinecraftDataset` / `MinecraftDataloader`: sliding-window dataset over token sequences for next-token prediction. `MinecraftDataloader` is a convenience function wrapping the dataset in a PyTorch `DataLoader` and returns it directly.
 - **`transformerblock.py`** — `TransformerBlock`, `MultiHeadAttention`, `LayerNorm`, `GELU`, `FeedForward`. Standard decoder-only transformer components with causal mask.
-- **`model.py`** — `MinecraftGPT`: GPT-style model using the above blocks. Entry point for running/testing. Contains an inline pixel array at the top used as a test sample.
-- **`vocab.txt`** — One class label per line (~345 entries, Quick Draw dataset classes). Used to build the vocabulary at startup.
+- **`model.py`** — `MinecraftGPT`: GPT-style model using the above blocks. `_main()` is the entry point: loads vocab, initializes the model, samples training/validation data, runs the training loop, and saves a checkpoint.
+- **`vocab.txt`** — One class label per line (345 entries, Quick Draw dataset classes). Used to build the vocabulary at startup.
 
 ## Config (`model.py`)
 
 ```python
 cfg = {
-    "vocab_size": 348,      # 345 class words + separator + 2 pixel sentinels
-    "context_length": 256,
+    "vocab_size": 347,      # 345 class words + 2 pixel token values (0 and 1)
+    "context_length": 785,  # 1 word token + 784 pixel tokens (28x28)
     "emb_dim": 256,
     "n_heads": 8,
     "n_layers": 12,
@@ -40,8 +41,11 @@ cfg = {
 }
 ```
 
-## Known Issues / In-Progress
+## Training
 
-- `dataset_loader.py`: `MinecraftDataloader` never returns the created DataLoader; also `MinecraftDataset` calls `tokenizer.encode(txt)` with wrong signature (requires `word` + `pixel_array`).
-- No training loop implemented yet.
-- No model checkpointing.
+- 50,000 train images, 5,000 validation images sampled from QuickDraw via `QuickdrawManager`
+- Batch size 32, AdamW optimizer (lr=0.0004, weight_decay=0.1), 10 epochs
+- Evaluates train/val loss every 100 steps (`eval_freq=100`, `eval_iter=20`)
+- After each epoch, generates and prints a sample image to stdout using `generate_and_print_sample`
+- Checkpoint saved to `model_and_optimizer.pth` after training completes (model + optimizer state)
+- Device selection: prefers CUDA, then MPS (PyTorch ≥ 2.9 only), then CPU

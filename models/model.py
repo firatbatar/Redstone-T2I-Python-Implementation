@@ -169,6 +169,7 @@ def _main():
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Total number of parameters: {total_params:,}")
 
+
     """
     Training Loop
     """
@@ -178,14 +179,16 @@ def _main():
 
     train_loader = MinecraftDataloader(
         train_data, tokenizer,
-        batch_size=32, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
+        batch_size=4, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
         drop_last=True, shuffle=True, num_workers=0
     )
     val_loader = MinecraftDataloader(
         val_data, tokenizer,
-        batch_size=32, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
+        batch_size=4, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
         drop_last=False, shuffle=False, num_workers=0
     )
+    
+
     print(f"Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
 
     torch.manual_seed(123)  # For reproducibility due to the shuffling in the data loader
@@ -202,9 +205,16 @@ def _main():
     num_epochs = 10
     train_losses, val_losses, tokens_seen = train_model_simple(
         model, train_loader, val_loader, optimizer, device,
-        num_epochs=num_epochs, eval_freq=5, eval_iter=5,
+        num_epochs=num_epochs, eval_freq=100, eval_iter=20,
         start_word="cat", tokenizer=tokenizer
     )
+
+    torch.save({
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        },
+        "model_and_optimizer.pth"
+        )
 
 
 __all__ = ["MinecraftGPT", "_main"]

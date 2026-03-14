@@ -60,7 +60,8 @@ class QuickdrawManager:
                 indices = rng.choice(list(self.unseen_indices[category]), size=count, replace=False)
                 self.unseen_indices[category] -= set(indices)
                 indices.sort()  # sequential access is faster on mmap
-                all_images.append(QuickdrawManager.encode_img_data(category, arr[indices]))
+                for idx in indices:
+                    all_images.append(QuickdrawManager.encode_img_data(category, arr[idx]))
 
         # Shuffle
         perm = rng.permutation(len(all_images))
@@ -80,7 +81,7 @@ class QuickdrawManager:
     def decode_img_data(data: tuple[str, int]) -> tuple[str, np.ndarray[int]]:
         """Unpack image data from a single integer."""
         label, img_int = data
-        img_str = bin(img_int)[2:]
+        img_str = bin(img_int)[2:].zfill(784)
         img_list = [int(x) for x in img_str]
         img = np.array(img_list)
         return label, img
