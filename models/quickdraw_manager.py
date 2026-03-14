@@ -35,16 +35,6 @@ class QuickdrawManager:
         for category in self.sizes.keys():
             self.unseen_indices[category] = set(range(self.sizes[category]))
 
-    def split_by_percentage(self, percentage: float, seed: int | None = None, from_original: bool = True) -> list[tuple[str, np.ndarray]]:
-        if not 0 <= percentage <= 1:
-            raise ValueError("Percentage must be between 0 and 1.")
-
-        if from_original:
-            self.reset()
-        
-        n = int(len(self) * percentage)
-        return self.sample_images(n, seed=seed)
-
     def sample_images(self, n: int, seed: int | None = None) -> list[tuple[str, np.ndarray]]:
         total = sum(self.sizes.values())
         n = min(n, total)
