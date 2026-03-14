@@ -3,10 +3,10 @@ from torch.utils.data import Dataset, DataLoader
 from .tokenizer import MinecraftTokenizer
 
 class MinecraftDataset(Dataset):
-    def __init__(self, txt, tokenizer, max_length, stride):
+    def __init__(self, img_data, tokenizer, max_length, stride):
         self.input_ids = []
         self.target_ids = []
-        token_ids = tokenizer.encode(txt)
+        token_ids = tokenizer.encode(img_data)
 
         for i in range(0, len(token_ids) - max_length, stride):
             input_chunk = token_ids[i:i+max_length]
@@ -20,13 +20,14 @@ class MinecraftDataset(Dataset):
     def __getitem__(self, idx):
         return self.input_ids[idx], self.target_ids[idx]
 
-def MinecraftDataloader(txt, tokenizer, batch_size=4, max_length=256, stride=128, shuffle=True, drop_last=True, num_workers=0):
-    dataset = MinecraftDataset(txt, tokenizer, max_length, stride)
+def MinecraftDataloader(img_data, tokenizer, batch_size=4, max_length=256, stride=128, shuffle=True, drop_last=True, num_workers=0):
+    dataset = MinecraftDataset(img_data, tokenizer, max_length, stride)
     dataloader = DataLoader(dataset,
                             batch_size=batch_size,
                             shuffle=shuffle,
                             drop_last=drop_last,
                             num_workers=num_workers
                             )
+    return dataloader
 
 __all__ = ["MinecraftDataloader"]

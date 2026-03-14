@@ -68,6 +68,7 @@ class QuickdrawManager:
 
         return images
     
+    @staticmethod
     def encode_img_data(label: str, img: np.ndarray) -> tuple[str, int]:
         """Pack image data into a single integer."""
         img_list = img.reshape(-1).astype(str).tolist()
@@ -75,6 +76,7 @@ class QuickdrawManager:
         img_int = int(img_str, 2)
         return (label, img_int)
 
+    @staticmethod
     def decode_img_data(data: tuple[str, int]) -> tuple[str, np.ndarray[int]]:
         """Unpack image data from a single integer."""
         label, img_int = data
