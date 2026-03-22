@@ -1,0 +1,49 @@
+import sys
+import torch
+from .tokenizer import MinecraftTokenizer
+from .model import MinecraftGPT, generate_and_print_sample
+
+def infer(word, checkpoint_path="model_and_optimizer.pth"):
+    cfg = {
+        "vocab_size": 347,
+        "context_length": 785,
+        "emb_dim": 256,
+        "n_heads": 8,
+        "n_layers": 12,
+        "drop_rate": 0.1,
+        "qkv_bias": False
+    }
+
+    with open("models/vocab.txt", "r", encoding="utf-8") as f:
+        all_words = f.read().split('\n')[:-1]
+    vocab = {token: integer for integer, token in enumerate(all_words)}
+    tokenizer = MinecraftTokenizer(vocab)
+
+    if word not in tokenizer.word_to_id:
+        print(f"Unknown word '{word}'. Available words are in models/vocab.txt.")
+        sys.exit(1)
+
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+
+    print(f"Using {device} device.")
+
+    model = MinecraftGPT(cfg)
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model.to(device)
+
+    generate_and_print_sample(model, tokenizer, device, word)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python -m models.infer <word> [checkpoint_path]")
+        sys.exit(1)
+    word = sys.argv[1]
+    checkpoint = sys.argv[2] if len(sys.argv) > 2 else "model_and_optimizer.pth"
+    infer(word, checkpoint)

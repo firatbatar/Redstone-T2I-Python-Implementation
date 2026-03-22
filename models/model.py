@@ -179,12 +179,12 @@ def _main():
 
     train_loader = MinecraftDataloader(
         train_data, tokenizer,
-        batch_size=4, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
+        batch_size=16, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
         drop_last=True, shuffle=True, num_workers=0
     )
     val_loader = MinecraftDataloader(
         val_data, tokenizer,
-        batch_size=4, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
+        batch_size=16, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
         drop_last=False, shuffle=False, num_workers=0
     )
     
@@ -202,11 +202,11 @@ def _main():
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.0004, weight_decay=0.1)
 
-    num_epochs = 10
+    num_epochs = 5
     train_losses, val_losses, tokens_seen = train_model_simple(
         model, train_loader, val_loader, optimizer, device,
         num_epochs=num_epochs, eval_freq=100, eval_iter=20,
-        start_word="cat", tokenizer=tokenizer
+        start_word="apple", tokenizer=tokenizer
     )
 
     torch.save({
