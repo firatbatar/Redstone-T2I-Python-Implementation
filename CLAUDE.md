@@ -11,7 +11,8 @@ Transformer-based model that generates images (binary) from text labels, intende
 ```bash
 cd models
 source .venv/bin/activate
-python model.py
+python -m models          # train
+python -m models.infer <word> [checkpoint_path]  # inference
 ```
 
 The `.venv` is located inside `models/` and contains all dependencies (torch, etc.).
@@ -25,6 +26,8 @@ All source files live in `models/`:
 - **`dataset_loader.py`** — `MinecraftDataset` / `MinecraftDataloader`: sliding-window dataset over token sequences for next-token prediction. `MinecraftDataloader` is a convenience function wrapping the dataset in a PyTorch `DataLoader` and returns it directly.
 - **`transformerblock.py`** — `TransformerBlock`, `MultiHeadAttention`, `LayerNorm`, `GELU`, `FeedForward`. Standard decoder-only transformer components with causal mask.
 - **`model.py`** — `MinecraftGPT`: GPT-style model using the above blocks. `_main()` is the entry point: loads vocab, initializes the model, samples training/validation data, runs the training loop, and saves a checkpoint.
+- **`infer.py`** — `infer(word, checkpoint_path)`: loads a saved checkpoint and generates/prints a sample image for the given word. Entry point for `python -m models.infer`.
+- **`__init__.py`** / **`__main__.py`** — package entry points; `python -m models` calls `_main()`.
 - **`vocab.txt`** — One class label per line (345 entries, Quick Draw dataset classes). Used to build the vocabulary at startup.
 
 ## Config (`model.py`)
@@ -44,7 +47,7 @@ cfg = {
 ## Training
 
 - 50,000 train images, 5,000 validation images sampled from QuickDraw via `QuickdrawManager`
-- Batch size 32, AdamW optimizer (lr=0.0004, weight_decay=0.1), 10 epochs
+- Batch size 16, AdamW optimizer (lr=0.0004, weight_decay=0.1), 5 epochs
 - Evaluates train/val loss every 100 steps (`eval_freq=100`, `eval_iter=20`)
 - After each epoch, generates and prints a sample image to stdout using `generate_and_print_sample`
 - Checkpoint saved to `model_and_optimizer.pth` after training completes (model + optimizer state)
