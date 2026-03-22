@@ -34,7 +34,10 @@ def infer(word, checkpoint_path="model_and_optimizer.pth"):
 
     model = MinecraftGPT(cfg)
     checkpoint = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint["model_state_dict"])
+    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+        model.load_state_dict(checkpoint["model_state_dict"])
+    else:
+        model.load_state_dict(checkpoint)
     model.to(device)
 
     generate_and_print_sample(model, tokenizer, device, word)
