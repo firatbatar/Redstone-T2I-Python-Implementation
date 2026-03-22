@@ -53,7 +53,7 @@ Below is code for testing functionality of model.
 def _main():
     cfg = {
         "vocab_size": 347,   # 345 classes + black and white bits
-        "context_length": 256,
+        "context_length": 785,
         "emb_dim": 256,      # can test 128,256,512. increase leads to overfit.
         "n_heads": 8,
         "n_layers": 12,
