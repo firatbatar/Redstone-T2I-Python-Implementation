@@ -9,7 +9,7 @@ def infer(word, checkpoint_path="model_and_optimizer.pth"):
         "context_length": 785,
         "emb_dim": 256,
         "n_heads": 8,
-        "n_layers": 12,
+        "n_layers": 6,
         "drop_rate": 0.1,
         "qkv_bias": False
     }

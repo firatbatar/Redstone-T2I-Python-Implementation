@@ -49,7 +49,9 @@ def generate_text_simple(model, idx, max_new_tokens, context_size):
 def calc_loss_batch(input_batch, target_batch, model, device):
     input_batch, target_batch = input_batch.to(device), target_batch.to(device)
     logits = model(input_batch)
-    loss = torch.nn.functional.cross_entropy(logits.flatten(0, 1), target_batch.flatten())
+    weight = torch.ones(347, device=input_batch.device)
+    weight[346] = 10.0  # upweight pixel-1 token (token index 346) to counter class imbalance
+    loss = torch.nn.functional.cross_entropy(logits.flatten(0, 1), target_batch.flatten(), weight=weight)
     return loss
 
 
@@ -94,6 +96,10 @@ def generate_and_print_sample(model, tokenizer, device, word):
     print(f"[{word}]")
     for row in range(side):
         print("".join("#" if pixels[row * side + col] else "." for col in range(side)))
+    print()
+    print("Pixel array:")
+    for row in range(side):
+        print([int(pixels[row * side + col]) for col in range(side)])
     model.train()
 
 
@@ -136,7 +142,7 @@ def _main():
         "context_length": 785,
         "emb_dim": 256,      # can test 128,256,512. increase leads to overfit.
         "n_heads": 8,
-        "n_layers": 12,
+        "n_layers": 6,
         "drop_rate": 0.1,
         "qkv_bias": False
     }
@@ -159,7 +165,8 @@ def _main():
             device = torch.device("cpu")
     else:
         device = torch.device("cpu")
-
+    
+    # device = torch.device("cpu")
     print(f"Using {device} device.")
 
     torch.manual_seed(123)
@@ -179,12 +186,12 @@ def _main():
 
     train_loader = MinecraftDataloader(
         train_data, tokenizer,
-        batch_size=16, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
+        batch_size=2, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
         drop_last=True, shuffle=True, num_workers=0
     )
     val_loader = MinecraftDataloader(
         val_data, tokenizer,
-        batch_size=16, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
+        batch_size=2, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
         drop_last=False, shuffle=False, num_workers=0
     )
     
@@ -202,7 +209,7 @@ def _main():
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.0004, weight_decay=0.1)
 
-    num_epochs = 5
+    num_epochs = 1
     train_losses, val_losses, tokens_seen = train_model_simple(
         model, train_loader, val_loader, optimizer, device,
         num_epochs=num_epochs, eval_freq=100, eval_iter=20,
