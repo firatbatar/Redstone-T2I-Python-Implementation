@@ -181,17 +181,17 @@ def _main():
     Training Loop
     """
     manager = QuickdrawManager()
-    train_data = manager.sample_images(n=50000, seed=42)
+    train_data = manager.sample_images(n=100000, seed=42)
     val_data = manager.sample_images(n=5000, seed=123)
 
     train_loader = MinecraftDataloader(
         train_data, tokenizer,
-        batch_size=2, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
+        batch_size=64, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
         drop_last=True, shuffle=True, num_workers=0
     )
     val_loader = MinecraftDataloader(
         val_data, tokenizer,
-        batch_size=2, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
+        batch_size=64, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
         drop_last=False, shuffle=False, num_workers=0
     )
     
@@ -207,7 +207,7 @@ def _main():
     print("Training loss:", train_loss)
     print("Validation loss:", val_loss)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=0.0004, weight_decay=0.1)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.00175, weight_decay=0.1)
 
     num_epochs = 1
     train_losses, val_losses, tokens_seen = train_model_simple(
