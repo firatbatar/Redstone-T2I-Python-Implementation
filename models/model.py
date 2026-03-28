@@ -150,8 +150,7 @@ def _main():
     # Load dataset and initialize tokenizer
     with open("models/vocab.txt", "r", encoding="utf-8") as f:
         words = f.read()
-    all_words = words.split('\n')[:-1]
-    vocab = {token:integer for integer, token in enumerate(all_words)}
+    vocab = words.split('\n')[:-1]
     tokenizer = MinecraftTokenizer(vocab)
 
     if torch.cuda.is_available():
