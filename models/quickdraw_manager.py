@@ -2,8 +2,6 @@ from pathlib import Path
 import json
 import numpy as np
 
-from time import time
-
 DATA_FOLDER = Path(__file__).parent / "quickdraw"
 
 class QuickdrawManager:
@@ -24,7 +22,7 @@ class QuickdrawManager:
 
             (data_folder / "_data_shape.json").write_text(json.dumps(self.sizes))
         
-        self._sizes = self.sizes
+        self._sizes = self.sizes.copy()
         self.unseen_indices = {}
         for category, count in self.sizes.items():
             self.unseen_indices[category] = set(range(count))
@@ -39,21 +37,26 @@ class QuickdrawManager:
 
         rng = np.random.default_rng(seed)
 
-        # Sample each category portionally
+        # Sample each category proportionally
         counts = [int(n * s / total) for s in self.sizes.values()]
-        if sum(counts) < n:
-            counts = [int(n * s / total) + 1 for s in self.sizes.values()]
-        counts = counts[:n]
+        deficit = n - sum(counts)
+        if deficit > 0:
+            deficit_indices = rng.choice(len(counts), size=deficit, replace=False)
+            for i in deficit_indices:
+                counts[i] += 1
 
-        try:
-            self.sizes = {category: count - counts[i] for i, (category, count) in enumerate(self.sizes.items())}
-        except IndexError:
-            pass
+        # Clamp to available unseen images per category
+        categories = list(self.sizes.keys())
+        for i, category in enumerate(categories):
+            counts[i] = min(counts[i], len(self.unseen_indices[category]))
+
+        # Update remaining sizes
+        self.sizes = {category: self.sizes[category] - counts[i] for i, category in enumerate(categories)}
 
         # Sample rows per category
         all_images: list[tuple[str, np.ndarray]] = []
 
-        for category, count in zip(self.sizes.keys(), counts):
+        for category, count in zip(categories, counts):
             npz_path = self.data_folder / f"{category}.npz"
             with np.load(npz_path, mmap_mode="r") as f:
                 arr = f[f.files[0]]

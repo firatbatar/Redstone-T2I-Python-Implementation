@@ -1,4 +1,4 @@
-# Initialize the tokenizer
+from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
@@ -39,8 +39,7 @@ def generate_text_simple(model, idx, max_new_tokens, context_size):
             logits = model(idx_cond)
 
         logits = logits[:, -1, :]
-        probas = torch.softmax(logits, dim=-1)
-        idx_next = torch.argmax(probas, dim=-1, keepdim=True)
+        idx_next = torch.argmax(logits, dim=-1, keepdim=True)
         idx = torch.cat((idx, idx_next), dim=1)
 
     return idx
@@ -49,8 +48,8 @@ def generate_text_simple(model, idx, max_new_tokens, context_size):
 def calc_loss_batch(input_batch, target_batch, model, device):
     input_batch, target_batch = input_batch.to(device), target_batch.to(device)
     logits = model(input_batch)
-    weight = torch.ones(347, device=input_batch.device)
-    weight[346] = 10.0  # upweight pixel-1 token (token index 346) to counter class imbalance
+    weight = torch.ones(logits.shape[-1], device=input_batch.device)
+    weight[346] = 5.0  # upweight pixel-1 token (token index 346) to counter class imbalance
     loss = torch.nn.functional.cross_entropy(logits.flatten(0, 1), target_batch.flatten(), weight=weight)
     return loss
 
@@ -133,9 +132,6 @@ def train_model_simple(model, train_loader, val_loader, optimizer, device, num_e
     return train_losses, val_losses, track_tokens_seen
 
 
-"""
-Below is code for testing functionality of model.
-"""
 def _main():
     cfg = {
         "vocab_size": 347,   # 345 classes + black and white bits
@@ -148,7 +144,7 @@ def _main():
     }
 
     # Load dataset and initialize tokenizer
-    with open("models/vocab.txt", "r", encoding="utf-8") as f:
+    with open(Path(__file__).parent / "vocab.txt", "r", encoding="utf-8") as f:
         words = f.read()
     vocab = words.split('\n')[:-1]
     tokenizer = MinecraftTokenizer(vocab)
@@ -165,7 +161,6 @@ def _main():
     else:
         device = torch.device("cpu")
     
-    # device = torch.device("cpu")
     print(f"Using {device} device.")
 
     torch.manual_seed(123)
@@ -176,9 +171,7 @@ def _main():
     print(f"Total number of parameters: {total_params:,}")
 
 
-    """
-    Training Loop
-    """
+    # Training Loop
     manager = QuickdrawManager()
     train_data = manager.sample_images(n=100000, seed=42)
     val_data = manager.sample_images(n=5000, seed=123)

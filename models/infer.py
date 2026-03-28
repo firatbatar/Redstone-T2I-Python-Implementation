@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 import torch
 from .tokenizer import MinecraftTokenizer
 from .model import MinecraftGPT, generate_and_print_sample
@@ -14,9 +15,8 @@ def infer(word, checkpoint_path="model_and_optimizer.pth"):
         "qkv_bias": False
     }
 
-    with open("models/vocab.txt", "r", encoding="utf-8") as f:
-        all_words = f.read().split('\n')[:-1]
-    vocab = {token: integer for integer, token in enumerate(all_words)}
+    with open(Path(__file__).parent / "vocab.txt", "r", encoding="utf-8") as f:
+        vocab = f.read().split('\n')[:-1]
     tokenizer = MinecraftTokenizer(vocab)
 
     if word not in tokenizer.word_to_id:
@@ -26,7 +26,11 @@ def infer(word, checkpoint_path="model_and_optimizer.pth"):
     if torch.cuda.is_available():
         device = torch.device("cuda")
     elif torch.backends.mps.is_available():
-        device = torch.device("mps")
+        major, minor = map(int, torch.__version__.split(".")[:2])
+        if (major, minor) >= (2, 9):
+            device = torch.device("mps")
+        else:
+            device = torch.device("cpu")
     else:
         device = torch.device("cpu")
 
