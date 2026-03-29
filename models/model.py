@@ -45,7 +45,7 @@ def generate_image(model, idx, max_new_tokens, context_size):
 
     return idx
 
-def generate(model, idx, max_new_tokens, context_size, temperature=0.0, top_k=None, eos_id=None):
+def generate(model, idx, max_new_tokens, context_size, temperature=0.0, top_k=None):
 
     # For-loop is the same as before: Get logits, and only focus on last time step
     for _ in range(max_new_tokens):
@@ -78,10 +78,7 @@ def generate(model, idx, max_new_tokens, context_size, temperature=0.0, top_k=No
         # Otherwise same as before: get idx of the vocab entry with the highest logits value
         else:
             idx_next = torch.argmax(logits, dim=-1, keepdim=True)  # (batch_size, 1)
-
-        if idx_next == eos_id:  # Stop generating early if end-of-sequence token is encountered and eos_id is specified
-            break
-
+ 
         # Same as before: append sampled index to the running sequence
         idx = torch.cat((idx, idx_next), dim=1)  # (batch_size, num_tokens+1)
 
