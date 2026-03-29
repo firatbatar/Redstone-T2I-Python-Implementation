@@ -32,15 +32,16 @@ class MinecraftGPT(nn.Module):
         logits = self.output_layer(x)
         return logits
 
-def generate_text_simple(model, idx, max_new_tokens, context_size):
+
+def generate_image(model, idx, max_new_tokens, context_size):
     for _ in range(max_new_tokens):
-        idx_cond = idx[:, -context_size:]
+        idx_cond = idx[:, -context_size:]       # idx is (batch, n_tokens)
         with torch.no_grad():
             logits = model(idx_cond)
-
-        logits = logits[:, -1, :]
-        idx_next = torch.argmax(logits, dim=-1, keepdim=True)
-        idx = torch.cat((idx, idx_next), dim=1)
+        logits = logits[:, -1, :]               # (batch, n_tokens, vocab_size) -> (batch, vocab_size)
+        probas = torch.softmax(logits, dim=-1)  # (batch, vocab_size)
+        idx_next = torch.argmax(probas, dim=-1, keepdim=True)       # (batch, 1)
+        idx = torch.cat((idx, idx_next), dim=1) # append sampled index to running sequence. idx has shape (batch, n_tokens+1)
 
     return idx
 
@@ -48,9 +49,8 @@ def generate_text_simple(model, idx, max_new_tokens, context_size):
 def calc_loss_batch(input_batch, target_batch, model, device):
     input_batch, target_batch = input_batch.to(device), target_batch.to(device)
     logits = model(input_batch)
-    weight = torch.ones(logits.shape[-1], device=input_batch.device)
-    weight[346] = 5.0  # upweight pixel-1 token (token index 346) to counter class imbalance
-    loss = torch.nn.functional.cross_entropy(logits.flatten(0, 1), target_batch.flatten(), weight=weight)
+    # (batch, n_tokens, vocab_size) -> (batch*n_tokens, vocab_size), (batch_size, n_tokens) -> (batch_size, n_tokens)
+    loss = torch.nn.functional.cross_entropy(logits.flatten(0, 1), target_batch.flatten())
     return loss
 
 
@@ -80,30 +80,30 @@ def evaluate_model(model, train_loader, val_loader, device, eval_iter):
     return train_loss, val_loss
 
 
-def generate_and_print_sample(model, tokenizer, device, word):
+def generate_and_print_image(model, tokenizer, device, word):
     model.eval()
+    # batch size will be 1 for printing since it is a single word only.
     context_size = model.pos_emb.weight.shape[0]
     word_id = tokenizer.word_to_id[word]
     encoded = torch.tensor([[word_id]], device=device)
     with torch.no_grad():
-        token_ids = generate_text_simple(
+        token_ids = generate_image(
             model=model, idx=encoded,
             max_new_tokens=context_size - 1, context_size=context_size
         )
-    pixels = tokenizer.decode_pixels(token_ids.squeeze(0))
+    pixels = tokenizer.decode_pixels(token_ids.squeeze(0))      # squeeze out batch dimension.
+    
     side = int(len(pixels) ** 0.5)
     print(f"[{word}]")
     for row in range(side):
         print("".join("#" if pixels[row * side + col] else "." for col in range(side)))
     print()
-    print("Pixel array:")
-    for row in range(side):
-        print([int(pixels[row * side + col]) for col in range(side)])
     model.train()
 
 
-def train_model_simple(model, train_loader, val_loader, optimizer, device, num_epochs,
+def train_model(model, train_loader, val_loader, optimizer, device, num_epochs,
                        eval_freq, eval_iter, start_word, tokenizer):
+    
     train_losses, val_losses, track_tokens_seen = [], [], []
     tokens_seen, global_step = 0, -1
 
@@ -127,16 +127,16 @@ def train_model_simple(model, train_loader, val_loader, optimizer, device, num_e
                 print(f"Ep {epoch+1} (Step {global_step:06d}): "
                     f"Train loss {train_loss:.3f}, Val loss {val_loss:.3f}")
 
-        generate_and_print_sample(model, tokenizer, device, start_word)
+        generate_and_print_image(model, tokenizer, device, start_word)
 
     return train_losses, val_losses, track_tokens_seen
 
 
 def _main():
     cfg = {
-        "vocab_size": 347,   # 345 classes + black and white bits
-        "context_length": 785,
-        "emb_dim": 256,      # can test 128,256,512. increase leads to overfit.
+        "vocab_size": 347,      # 345 classes + black and white bit
+        "context_length": 785,  # prompt + 784 pixels
+        "emb_dim": 256,         # can test 128, 256, 512. increase leads to overfit.
         "n_heads": 8,
         "n_layers": 6,
         "drop_rate": 0.1,
@@ -173,17 +173,17 @@ def _main():
 
     # Training Loop
     manager = QuickdrawManager()
-    train_data = manager.sample_images(n=100000, seed=42)
-    val_data = manager.sample_images(n=5000, seed=123)
+    train_data = manager.sample_images(n=100, seed=42)
+    val_data = manager.sample_images(n=6, seed=123)
 
     train_loader = MinecraftDataloader(
         train_data, tokenizer,
-        batch_size=64, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
+        batch_size=2, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
         drop_last=True, shuffle=True, num_workers=0
     )
     val_loader = MinecraftDataloader(
         val_data, tokenizer,
-        batch_size=64, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
+        batch_size=2, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
         drop_last=False, shuffle=False, num_workers=0
     )
     
