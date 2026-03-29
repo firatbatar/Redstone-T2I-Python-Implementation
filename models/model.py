@@ -173,17 +173,17 @@ def _main():
 
     # Training Loop
     manager = QuickdrawManager()
-    train_data = manager.sample_images(n=100, seed=42)
-    val_data = manager.sample_images(n=6, seed=123)
+    train_data = manager.sample_images(n=100000, seed=42)
+    val_data = manager.sample_images(n=5000, seed=123)
 
     train_loader = MinecraftDataloader(
         train_data, tokenizer,
-        batch_size=2, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
+        batch_size=64, max_length=cfg["context_length"] - 1,
         drop_last=True, shuffle=True, num_workers=0
     )
     val_loader = MinecraftDataloader(
         val_data, tokenizer,
-        batch_size=2, max_length=cfg["context_length"] - 1, stride=cfg["context_length"] - 1,
+        batch_size=64, max_length=cfg["context_length"] - 1,
         drop_last=False, shuffle=False, num_workers=0
     )
     
@@ -202,7 +202,7 @@ def _main():
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.00175, weight_decay=0.1)
 
     num_epochs = 1
-    train_losses, val_losses, tokens_seen = train_model_simple(
+    train_losses, val_losses, tokens_seen = train_model(
         model, train_loader, val_loader, optimizer, device,
         num_epochs=num_epochs, eval_freq=100, eval_iter=20,
         start_word="apple", tokenizer=tokenizer
