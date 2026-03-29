@@ -9,7 +9,7 @@
    cd Redstone-T2I-Python-Implementation
    ```
 
-2. **Create a virtual environment in project root**
+2. **Create a virtual environment inside project root**
 
    ```bash
    python -m venv .venv
@@ -23,30 +23,35 @@
    pip install -r requirements.txt
    ```
 
-## Running the Model Test
-
-From the **project root** directory, run:
-
-```bash
-python -m models
-```
-
-This executes the `_main()` function in `models/model.py`, which:
-
-1. Loads the vocabulary from `models/vocab.txt`
-2. Initializes the `MinecraftTokenizer` and `MinecraftGPT` model
-3. Encodes a sample pixel array with the label `"apple"`
-4. Runs a simple greedy generation and prints the output
+4. **Download the QuickDraw dataset** into `models/quickdraw/` as `.npz` files (one per class).
 
 ## Training
 
-> **Note:** The training module is a placeholder and is not yet fully implemented.
-
-From the **project root** directory, run:
+From the project root directory, activate the virtual environment and run:
 
 ```bash
+source .venv/bin/activate
 python -m models
 ```
+
+This trains the model on 100,000 QuickDraw images for 3 epochs and saves a checkpoint to `model_and_optimizer.pth`.
+
+## Inference
+
+Generate an image for a given word:
+
+```bash
+python -m models.infer <word>
+python -m models.infer <word> <checkpoint_path>
+```
+
+Example:
+
+```bash
+python -m models.infer apple
+```
+
+Prints a 28×28 ASCII image (`#`/`.`) to stdout.
 
 ## Project Structure
 
@@ -67,8 +72,6 @@ python -m models
 ├── CLAUDE.md
 └── README.md
 ```
-
-> **Note:** You will need to import dataset and check corresponding file paths.
 
 ## License
 
