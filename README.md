@@ -9,7 +9,7 @@
    cd Redstone-T2I-Python-Implementation
    ```
 
-2. **Create a virtual environment**
+2. **Create a virtual environment in project root**
 
    ```bash
    python -m venv .venv
@@ -45,7 +45,7 @@ This executes the `_main()` function in `models/model.py`, which:
 From the **project root** directory, run:
 
 ```bash
-python -m training
+python -m models
 ```
 
 ## Project Structure
@@ -55,17 +55,20 @@ python -m training
 ├── models/
 │   ├── __init__.py          # Package entry point, exposes main()
 │   ├── __main__.py          # Enables `python -m models`
-│   ├── model.py             # MinecraftGPT model + test code
+│   ├── infer.py             # Draw an image of your choice!
+│   ├── viz.py               # Compare it with an image from the original dataset
+│   ├── model.py             # MinecraftGPT model + training code
+│   ├── quickdraw_manager.py # Quick Draw Dataset manager (enables sampling)
 │   ├── tokenizer.py         # MinecraftTokenizer (word + pixel encoding)
 │   ├── dataset_loader.py    # Dataset and DataLoader utilities
 │   ├── transformerblock.py  # Transformer block components
 │   └── vocab.txt            # Class labels vocabulary (345 entries)
-├── training/
-│   ├── __init__.py          # Package entry point, exposes main()
-│   └── __main__.py          # Enables `python -m training`
 ├── requirements.txt
+├── CLAUDE.md
 └── README.md
 ```
+
+> **Note:** You will need to import dataset and check corresponding file paths.
 
 ## License
 
