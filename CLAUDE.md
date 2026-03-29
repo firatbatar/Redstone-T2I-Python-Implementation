@@ -30,7 +30,9 @@ All source files live in `models/`:
 - **`__init__.py`** / **`__main__.py`** — package entry points; `python -m models` calls `_main()`.
 - **`vocab.txt`** — One class label per line (345 entries, Quick Draw dataset classes). Used to build the vocabulary at startup.
 
-## Config (`model.py`)
+## Config (`model.py` and `infer.py`)
+
+The `cfg` dict is duplicated in both files and must be kept in sync when changing hyperparameters.
 
 ```python
 cfg = {
@@ -47,9 +49,9 @@ cfg = {
 ## Training
 
 - 100,000 train images, 5,000 validation images sampled from QuickDraw via `QuickdrawManager`
-- Batch size 2, AdamW optimizer (lr=0.00175, weight_decay=0.1), 1 epoch
+- Batch size 64, AdamW optimizer (lr=0.00175, weight_decay=0.1), 1 epoch
 - Sliding window: `max_length = stride = context_length - 1 = 784` (one window per image)
 - Evaluates train/val loss every 100 steps (`eval_freq=100`, `eval_iter=20`)
-- After each epoch, generates and prints a sample image to stdout using `generate_and_print_sample`
+- After each epoch, generates and prints a sample image to stdout using `generate_and_print_image`
 - Checkpoint saved to `model_and_optimizer.pth` after training completes (model + optimizer state)
 - Device selection: prefers CUDA, then MPS (PyTorch ≥ 2.9 only), then CPU

@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 import torch
 from .tokenizer import MinecraftTokenizer
-from .model import MinecraftGPT, generate_and_print_sample
+from .model import MinecraftGPT, generate_and_print_image
 
 def infer(word, checkpoint_path="model_and_optimizer.pth"):
     cfg = {
@@ -44,7 +44,7 @@ def infer(word, checkpoint_path="model_and_optimizer.pth"):
         model.load_state_dict(checkpoint)
     model.to(device)
 
-    generate_and_print_sample(model, tokenizer, device, word)
+    generate_and_print_image(model, tokenizer, device, word)
 
 
 if __name__ == "__main__":
