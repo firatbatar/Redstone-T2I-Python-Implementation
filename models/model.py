@@ -135,7 +135,7 @@ def generate_and_print_image(model, tokenizer, device, word):
             max_new_tokens=context_size-1,
             context_size=context_size,
             top_k=2,    # Only choose between black and white
-            temperature=1.4
+            temperature=1.2
         )
     pixels = tokenizer.decode_pixels(token_ids.squeeze(0))      # squeeze out batch dimension.
     
@@ -247,7 +247,7 @@ def _main():
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.00175, weight_decay=0.1)
 
-    num_epochs = 1
+    num_epochs = 3
     train_losses, val_losses, tokens_seen = train_model(
         model, train_loader, val_loader, optimizer, device,
         num_epochs=num_epochs, eval_freq=100, eval_iter=20,
