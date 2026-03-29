@@ -49,7 +49,7 @@ cfg = {
 ## Training
 
 - 100,000 train images, 5,000 validation images sampled from QuickDraw via `QuickdrawManager`
-- Batch size 64, AdamW optimizer (lr=0.00175, weight_decay=0.1), 1 epoch
+- Batch size 64, AdamW optimizer (lr=0.00175, weight_decay=0.1), 3 epochs
 - Sliding window: `max_length = stride = context_length - 1 = 784` (one window per image)
 - Evaluates train/val loss every 100 steps (`eval_freq=100`, `eval_iter=20`)
 - After each epoch, generates and prints a sample image to stdout using `generate_and_print_image`
