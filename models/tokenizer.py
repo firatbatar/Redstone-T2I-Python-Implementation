@@ -7,7 +7,7 @@ class MinecraftTokenizer:
     def __init__(self, vocab):
         self.word_to_id = {word: i for i, word in enumerate(vocab)}
         # Map binary pixel values (0/1) to unique IDs starting after vocab tokens
-        self.pixel_start_id = 345 
+        self.pixel_start_id = len(vocab) 
 
     def encode(self, img_data: tuple[str, int]):
         word, img = QuickdrawManager.decode_img_data(img_data)
