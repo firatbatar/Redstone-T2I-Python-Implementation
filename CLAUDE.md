@@ -9,13 +9,13 @@ Transformer-based model that generates images (binary) from text labels, intende
 ## Running
 
 ```bash
-cd models
+# From the project root
 source .venv/bin/activate
 python -m models                                  # train
 python -m models.infer <word> [checkpoint_path]   # inference
 ```
 
-The `.venv` is located inside `models/` and contains all dependencies (torch, etc.).
+The `.venv` is located inside the project root and contains all dependencies.
 
 ## Architecture
 
