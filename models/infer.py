@@ -14,14 +14,14 @@ def infer(word, checkpoint_path="model_and_optimizer.pth"):
     else:
         cfg = json.loads(CONFIG_PATH.read_text())
 
-
-    with open(Path(__file__).parent / "vocab.txt", "r", encoding="utf-8") as f:
-        vocab = f.read().split('\n')[:-1]
-    tokenizer = MinecraftTokenizer(vocab)
+    vocab_file = Path(__file__).parent / "vocab.txt"
+    if not vocab_file.exists():
+        raise FileNotFoundError(f"Vocab file not found: {vocab_file}")
+    words = vocab_file.read_text().split('\n')[:-1]
+    tokenizer = MinecraftTokenizer(words)
 
     if word not in tokenizer.word_to_id:
-        print(f"Unknown word '{word}'. Available words are in models/vocab.txt.")
-        sys.exit(1)
+        raise ValueError(f"Unknown word '{word}'. Available words are in models/vocab.txt.")
 
     if torch.cuda.is_available():
         device = torch.device("cuda")

@@ -18,8 +18,7 @@ def main():
     npz_path = DATA_FOLDER / f"{category}.npz"
 
     if not npz_path.exists():
-        print(f"Category '{category}' not found in {DATA_FOLDER}")
-        sys.exit(1)
+        raise FileNotFoundError(f"Category '{category}' not found in {DATA_FOLDER}")
 
     with np.load(npz_path, mmap_mode="r") as f:
         arr = f[f.files[0]]

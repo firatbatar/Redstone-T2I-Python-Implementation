@@ -195,10 +195,11 @@ def _main():
         cfg = json.loads(CONFIG_PATH.read_text())
 
     # Load dataset and initialize tokenizer
-    with open(Path(__file__).parent / "vocab.txt", "r", encoding="utf-8") as f:
-        words = f.read()
-    vocab = words.split('\n')[:-1]
-    tokenizer = MinecraftTokenizer(vocab)
+    vocab_file = Path(__file__).parent / "vocab.txt"
+    if not vocab_file.exists():
+        raise FileNotFoundError(f"Vocab file not found: {vocab_file}")
+    words = vocab_file.read_text().split('\n')[:-1]
+    tokenizer = MinecraftTokenizer(words)
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
