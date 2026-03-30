@@ -3,10 +3,9 @@
 import sys
 import numpy as np
 from pathlib import Path
-from quickdraw_manager import QuickdrawManager
+from .quickdraw_manager import QuickdrawManager
 
 DATA_FOLDER = Path(__file__).parent / "quickdraw"
-
 
 def main():
     if len(sys.argv) < 2:
