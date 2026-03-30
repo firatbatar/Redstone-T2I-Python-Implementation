@@ -30,7 +30,7 @@ class QuickdrawManager:
     def sample_images(self,
         n: int,
         seed: int | None = None,
-    ) -> list[tuple[str, np.ndarray]]:
+    ) -> list[tuple[str, int]]:
         total = sum(self.sizes.values())
         # print(f"Found {len(self.sizes)} categories, {total:,} images total")
         n = min(n, total)
@@ -54,7 +54,7 @@ class QuickdrawManager:
         self.sizes = {category: self.sizes[category] - counts[i] for i, category in enumerate(categories)}
 
         # Sample rows per category
-        all_images: list[tuple[str, np.ndarray]] = []
+        all_images: list[tuple[str, int]] = []
 
         for category, count in zip(categories, counts):
             npz_path = self.data_folder / f"{category}.npz"
