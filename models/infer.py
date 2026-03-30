@@ -1,19 +1,19 @@
 import sys
 from pathlib import Path
 import torch
+import json
+
 from .tokenizer import MinecraftTokenizer
 from .model import MinecraftGPT, generate_and_print_image
 
+CONFIG_PATH = Path(__file__).parent / "config.json"
+
 def infer(word, checkpoint_path="model_and_optimizer.pth"):
-    cfg = {
-        "vocab_size": 347,
-        "context_length": 785,
-        "emb_dim": 256,
-        "n_heads": 8,
-        "n_layers": 6,
-        "drop_rate": 0.1,
-        "qkv_bias": False
-    }
+    if not CONFIG_PATH.exists():
+        raise FileNotFoundError(f"Config file not found: {CONFIG_PATH}")
+    else:
+        cfg = json.loads(CONFIG_PATH.read_text())
+
 
     with open(Path(__file__).parent / "vocab.txt", "r", encoding="utf-8") as f:
         vocab = f.read().split('\n')[:-1]

@@ -2,11 +2,14 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
+import json
 
 from .tokenizer import MinecraftTokenizer
 from .dataset_loader import MinecraftDataloader
 from .quickdraw_manager import QuickdrawManager
 from .transformerblock import TransformerBlock, LayerNorm
+
+CONFIG_PATH = Path(__file__).parent / "config.json"
 
 class MinecraftGPT(nn.Module):
     def __init__(self, cfg):
@@ -176,15 +179,20 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs,
 
 
 def _main():
-    cfg = {
-        "vocab_size": 347,      # 345 classes + black and white bit
-        "context_length": 785,  # prompt + 784 pixels
-        "emb_dim": 256,         # can test 128, 256, 512. increase leads to overfit.
-        "n_heads": 8,
-        "n_layers": 6,
-        "drop_rate": 0.1,
-        "qkv_bias": False
-    }
+    if not CONFIG_PATH.exists():
+        cfg = {
+            "vocab_size": 347,      # 345 classes + black and white bit
+            "context_length": 785,  # prompt + 784 pixels
+            "emb_dim": 256,         # can test 128, 256, 512. increase leads to overfit.
+            "n_heads": 8,
+            "n_layers": 6,
+            "drop_rate": 0.1,
+            "qkv_bias": False
+        }
+        CONFIG_PATH.write_text(json.dumps(cfg, indent=4))
+    else:
+        # Load config
+        cfg = json.loads(CONFIG_PATH.read_text())
 
     # Load dataset and initialize tokenizer
     with open(Path(__file__).parent / "vocab.txt", "r", encoding="utf-8") as f:
