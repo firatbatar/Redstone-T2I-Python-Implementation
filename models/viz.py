@@ -32,12 +32,21 @@ def main():
     img = arr[idx].reshape(28, 28)
     display = 1 - img  # invert: pixel=1 → black (0), background=0 → white (1)
 
+    import subprocess
+    from datetime import datetime
+
+    out_dir = Path(__file__).parent.parent / "generated"
+    out_dir.mkdir(exist_ok=True)
+    path = out_dir / f"{category}_{idx}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+
     fig, ax = plt.subplots(figsize=(4, 4))
     ax.imshow(display, cmap="gray", vmin=0, vmax=1, interpolation="nearest")
     ax.set_title(f"{category} (index {idx})")
     ax.axis("off")
     plt.tight_layout()
-    plt.show()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    subprocess.Popen(["xdg-open", str(path)])
 
 
 if __name__ == "__main__":

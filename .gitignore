@@ -1,5 +1,11 @@
+# Dataset files
 quickdraw/
+# Weight files
 *.pth
+# Folder that contains generated images, which are not needed to be tracked by git.
+generated/
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

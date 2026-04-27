@@ -142,18 +142,27 @@ def generate_and_print_image(model, tokenizer, device, word):
             temperature=1.2
         )
 
-    pixels = tokenizer.decode_pixels(token_ids.squeeze(0))      # squeeze out batch dimension.
+    pixels = tokenizer.decode_pixels(token_ids.squeeze(0).cpu())  # squeeze out batch dimension.
 
     side = int(len(pixels) ** 0.5)
     grid = np.array(pixels, dtype=np.uint8).reshape(side, side)
     img = 1 - grid  # invert: pixel=1 → black (0), background=0 → white (1)
+
+    import subprocess
+    from datetime import datetime
+
+    out_dir = Path(__file__).parent.parent / "generated"
+    out_dir.mkdir(exist_ok=True)
+    path = out_dir / f"{word}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
 
     fig, ax = plt.subplots(figsize=(4, 4))
     ax.imshow(img, cmap="gray", vmin=0, vmax=1, interpolation="nearest")
     ax.set_title(word)
     ax.axis("off")
     plt.tight_layout()
-    plt.show()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    subprocess.Popen(["xdg-open", str(path)])
     model.train()
 
 
@@ -235,8 +244,8 @@ def _main():
 
     # Training Loop
     manager = QuickdrawManager()
-    train_data = manager.sample_images(n=100000, seed=42)
-    val_data = manager.sample_images(n=5000, seed=123)
+    train_data = manager.sample_images(n=345000, seed=42)
+    val_data = manager.sample_images(n=34500, seed=123)
 
     train_loader = MinecraftDataloader(
         train_data, tokenizer,
