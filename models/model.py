@@ -28,7 +28,7 @@ class MinecraftGPT(nn.Module):
         self.output_layer = nn.Linear(cfg["emb_dim"], cfg["vocab_size"], bias=False)
 
     def forward(self, in_idx):
-        batch_size, seq_len = in_idx.shape
+        _, seq_len = in_idx.shape
         tok_embeds = self.tok_emb(in_idx)
         pos_embeds = self.pos_emb(
                 torch.arange(seq_len, device=in_idx.device))
@@ -294,7 +294,7 @@ def _main():
     # Main training loop
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.00175, weight_decay=0.1)
     num_epochs = 3
-    train_losses, val_losses, tokens_seen = train_model(
+    train_model(
         model, train_loader, val_loader, optimizer, device,
         num_epochs=num_epochs, eval_freq=100, eval_iter=20,
         start_word="apple", tokenizer=tokenizer, class_weights=class_weights
