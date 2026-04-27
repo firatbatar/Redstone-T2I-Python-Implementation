@@ -126,40 +126,43 @@ def evaluate_model(model, train_loader, val_loader, device, eval_iter):
     return train_loss, val_loss
 
 
-def generate_and_print_image(model, tokenizer, device, word):
-    model.eval()
-    # batch size will be 1 for printing since it is a single word only.
-    context_size = model.pos_emb.weight.shape[0]
-    word_id = tokenizer.word_to_id[word]
-    encoded = torch.tensor([[word_id]], device=device)
-    with torch.no_grad():
-        token_ids = generate(
-            model=model,
-            idx=encoded,
-            max_new_tokens=context_size-1,
-            context_size=context_size,
-            top_k=2,    # Only choose between black and white
-            temperature=1.2
-        )
-
-    pixels = tokenizer.decode_pixels(token_ids.squeeze(0).cpu())  # squeeze out batch dimension.
-
-    side = int(len(pixels) ** 0.5)
-    grid = np.array(pixels, dtype=np.uint8).reshape(side, side)
-    img = 1 - grid  # invert: pixel=1 → black (0), background=0 → white (1)
-
+def generate_and_print_image(model, tokenizer, device, word,
+                             temperatures=(0.5, 0.8, 1.0, 1.2, 1.5)):
     import subprocess
     from datetime import datetime
+
+    model.eval()
+    context_size = model.pos_emb.weight.shape[0]
+    word_id = tokenizer.word_to_id[word]
+
+    grids = []
+    for temp in temperatures:
+        encoded = torch.tensor([[word_id]], device=device)
+        with torch.no_grad():
+            token_ids = generate(
+                model=model,
+                idx=encoded,
+                max_new_tokens=context_size - 1,
+                context_size=context_size,
+                top_k=2,
+                temperature=temp,
+            )
+        pixels = tokenizer.decode_pixels(token_ids.squeeze(0).cpu())
+        side = int(len(pixels) ** 0.5)
+        grid = np.array(pixels, dtype=np.uint8).reshape(side, side)
+        grids.append(1 - grid)  # invert: pixel=1 → black (0), background=0 → white (1)
+
+    fig, axes = plt.subplots(1, len(temperatures), figsize=(3 * len(temperatures), 3))
+    for ax, img, temp in zip(axes, grids, temperatures):
+        ax.imshow(img, cmap="gray", vmin=0, vmax=1, interpolation="nearest")
+        ax.set_title(f"t={temp}")
+        ax.axis("off")
+    fig.suptitle(word)
+    plt.tight_layout()
 
     out_dir = Path(__file__).parent.parent / "generated"
     out_dir.mkdir(exist_ok=True)
     path = out_dir / f"{word}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-
-    fig, ax = plt.subplots(figsize=(4, 4))
-    ax.imshow(img, cmap="gray", vmin=0, vmax=1, interpolation="nearest")
-    ax.set_title(word)
-    ax.axis("off")
-    plt.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
     subprocess.Popen(["xdg-open", str(path)])
@@ -192,6 +195,15 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs,
                 print(f"Ep {epoch+1} (Step {global_step:06d}): "
                     f"Train loss {train_loss:.3f}, Val loss {val_loss:.3f}")
 
+        # Save model and optimizer state after each epoch, and generate an image for the start word
+        torch.save({
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            },
+            f"model_and_optimizer_{epoch}.pth"
+            )
+        
+        # Generate and print an image for the start word after each epoch
         generate_and_print_image(model, tokenizer, device, start_word)
 
     return train_losses, val_losses, track_tokens_seen
@@ -269,13 +281,6 @@ def _main():
         num_epochs=num_epochs, eval_freq=100, eval_iter=20,
         start_word="apple", tokenizer=tokenizer
     )
-
-    torch.save({
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        },
-        "model_and_optimizer.pth"
-        )
 
 
 __all__ = ["MinecraftGPT", "_main"]
