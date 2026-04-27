@@ -46,7 +46,16 @@ def main():
     plt.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
-    subprocess.Popen(["xdg-open", str(path)])
+    try:
+        subprocess.Popen(["xdg-open", str(path)],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except FileNotFoundError:
+        pass
+    try:
+        from IPython.display import display, Image as IPImage
+        display(IPImage(str(path)))
+    except ImportError:
+        pass
 
 
 if __name__ == "__main__":

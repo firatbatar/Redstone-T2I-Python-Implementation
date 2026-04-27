@@ -92,15 +92,18 @@ def generate(model, idx, max_new_tokens, context_size, temperature=0.0, top_k=No
     return idx
 
 
-def calc_loss_batch(input_batch, target_batch, model, device):
+def calc_loss_batch(input_batch, target_batch, model, device, class_weights=None):
     input_batch, target_batch = input_batch.to(device), target_batch.to(device)
     logits = model(input_batch)
     # (batch, n_tokens, vocab_size) -> (batch*n_tokens, vocab_size), (batch_size, n_tokens) -> (batch_size, n_tokens)
-    loss = torch.nn.functional.cross_entropy(logits.flatten(0, 1), target_batch.flatten())
+    loss = torch.nn.functional.cross_entropy(
+        logits.flatten(0, 1), target_batch.flatten(),
+        weight=class_weights
+    )
     return loss
 
 
-def calc_loss_loader(data_loader, model, device, num_batches=None):
+def calc_loss_loader(data_loader, model, device, num_batches=None, class_weights=None):
     total_loss = 0.
     if len(data_loader) == 0:
         return float("nan")
@@ -110,18 +113,18 @@ def calc_loss_loader(data_loader, model, device, num_batches=None):
         num_batches = min(num_batches, len(data_loader))
     for i, (input_batch, target_batch) in enumerate(data_loader):
         if i < num_batches:
-            loss = calc_loss_batch(input_batch, target_batch, model, device)
+            loss = calc_loss_batch(input_batch, target_batch, model, device, class_weights)
             total_loss += loss.item()
         else:
             break
     return total_loss / num_batches
 
 
-def evaluate_model(model, train_loader, val_loader, device, eval_iter):
+def evaluate_model(model, train_loader, val_loader, device, eval_iter, class_weights=None):
     model.eval()
     with torch.no_grad():
-        train_loss = calc_loss_loader(train_loader, model, device, num_batches=eval_iter)
-        val_loss = calc_loss_loader(val_loader, model, device, num_batches=eval_iter)
+        train_loss = calc_loss_loader(train_loader, model, device, num_batches=eval_iter, class_weights=class_weights)
+        val_loss = calc_loss_loader(val_loader, model, device, num_batches=eval_iter, class_weights=class_weights)
     model.train()
     return train_loss, val_loss
 
@@ -165,13 +168,22 @@ def generate_and_print_image(model, tokenizer, device, word,
     path = out_dir / f"{word}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
     fig.savefig(path, dpi=150)
     plt.close(fig)
-    subprocess.Popen(["xdg-open", str(path)])
+    try:
+        subprocess.Popen(["xdg-open", str(path)],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except FileNotFoundError:
+        pass
+    try:
+        from IPython.display import display, Image as IPImage
+        display(IPImage(str(path)))
+    except ImportError:
+        pass
     model.train()
 
 
 def train_model(model, train_loader, val_loader, optimizer, device, num_epochs,
-                       eval_freq, eval_iter, start_word, tokenizer):
-    
+                       eval_freq, eval_iter, start_word, tokenizer, class_weights=None):
+
     train_losses, val_losses, track_tokens_seen = [], [], []
     tokens_seen, global_step = 0, -1
 
@@ -180,7 +192,7 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs,
 
         for input_batch, target_batch in train_loader:
             optimizer.zero_grad()
-            loss = calc_loss_batch(input_batch, target_batch, model, device)
+            loss = calc_loss_batch(input_batch, target_batch, model, device, class_weights)
             loss.backward()
             optimizer.step()
             tokens_seen += input_batch.numel()
@@ -188,7 +200,7 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs,
 
             if global_step % eval_freq == 0:
                 train_loss, val_loss = evaluate_model(
-                    model, train_loader, val_loader, device, eval_iter)
+                    model, train_loader, val_loader, device, eval_iter, class_weights)
                 train_losses.append(train_loss)
                 val_losses.append(val_loss)
                 track_tokens_seen.append(tokens_seen)
@@ -266,9 +278,15 @@ def _main():
 
     torch.manual_seed(123)  # For reproducibility due to the shuffling in the data loader
 
+    # Weight pixel-1 (black ink, token index 346) higher to counteract class imbalance.
+    # QuickDraw images are ~90% white, so black pixels are underrepresented ~9:1.
+    pixel_1_idx = tokenizer.pixel_start_id + 1
+    class_weights = torch.ones(cfg["vocab_size"], device=device)
+    class_weights[pixel_1_idx] = 9.0
+
     with torch.no_grad():
-        train_loss = calc_loss_loader(train_loader, model, device)
-        val_loss = calc_loss_loader(val_loader, model, device)
+        train_loss = calc_loss_loader(train_loader, model, device, class_weights=class_weights)
+        val_loss = calc_loss_loader(val_loader, model, device, class_weights=class_weights)
     print("Training loss:", train_loss)
     print("Validation loss:", val_loss)
 
@@ -279,7 +297,7 @@ def _main():
     train_losses, val_losses, tokens_seen = train_model(
         model, train_loader, val_loader, optimizer, device,
         num_epochs=num_epochs, eval_freq=100, eval_iter=20,
-        start_word="apple", tokenizer=tokenizer
+        start_word="apple", tokenizer=tokenizer, class_weights=class_weights
     )
 
 
