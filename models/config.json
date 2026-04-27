@@ -1,9 +1,10 @@
 {
-    "vocab_size": 347,
-    "context_length": 785,
+    "vocab_size": 361,
+    "context_length": 197,
     "emb_dim": 128,
     "n_heads": 8,
     "n_layers": 6,
     "drop_rate": 0.1,
-    "qkv_bias": false
+    "qkv_bias": false,
+    "patch_size": 2
 }

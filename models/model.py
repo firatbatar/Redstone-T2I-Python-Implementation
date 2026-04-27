@@ -232,7 +232,7 @@ def _main():
     if not vocab_file.exists():
         raise FileNotFoundError(f"Vocab file not found: {vocab_file}")
     words = vocab_file.read_text().split('\n')[:-1]
-    tokenizer = MinecraftTokenizer(words)
+    tokenizer = MinecraftTokenizer(words, patch_size=cfg.get("patch_size", 1))
 
 
     # Set up device (GPU if available, otherwise CPU)
@@ -278,11 +278,12 @@ def _main():
 
     torch.manual_seed(123)  # For reproducibility due to the shuffling in the data loader
 
-    # Weight pixel-1 (black ink, token index 346) higher to counteract class imbalance.
-    # QuickDraw images are ~90% white, so black pixels are underrepresented ~9:1.
-    pixel_1_idx = tokenizer.pixel_start_id + 1
+    # Weight all ink-containing patch tokens higher to counteract class imbalance.
+    # Patch value 0 = all-white (background). Values 1+ contain at least one black pixel.
+    num_patch_values = 2 ** tokenizer._pixels_per_patch
     class_weights = torch.ones(cfg["vocab_size"], device=device)
-    class_weights[pixel_1_idx] = 9.0
+    for v in range(1, num_patch_values):
+        class_weights[tokenizer.pixel_start_id + v] = 9.0
 
     with torch.no_grad():
         train_loss = calc_loss_loader(train_loader, model, device, class_weights=class_weights)

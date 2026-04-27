@@ -18,7 +18,7 @@ def infer(word, checkpoint_path="model_and_optimizer.pth"):
     if not vocab_file.exists():
         raise FileNotFoundError(f"Vocab file not found: {vocab_file}")
     words = vocab_file.read_text().split('\n')[:-1]
-    tokenizer = MinecraftTokenizer(words)
+    tokenizer = MinecraftTokenizer(words, patch_size=cfg.get("patch_size", 1))
 
     if word not in tokenizer.word_to_id:
         raise ValueError(f"Unknown word '{word}'. Available words are in models/vocab.txt.")
