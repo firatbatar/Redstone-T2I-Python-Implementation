@@ -199,19 +199,9 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs,
 
 def _main():
     if not CONFIG_PATH.exists():
-        cfg = {
-            "vocab_size": 347,      # 345 classes + black and white bit
-            "context_length": 785,  # prompt + 784 pixels
-            "emb_dim": 256,         # can test 128, 256, 512. increase leads to overfit.
-            "n_heads": 8,
-            "n_layers": 6,
-            "drop_rate": 0.1,
-            "qkv_bias": False
-        }
-        CONFIG_PATH.write_text(json.dumps(cfg, indent=4))
-    else:
-        # Load config
-        cfg = json.loads(CONFIG_PATH.read_text())
+        raise FileNotFoundError(f"Config file not found: {CONFIG_PATH}")        
+    cfg = json.loads(CONFIG_PATH.read_text())
+
 
     # Load dataset and initialize tokenizer
     vocab_file = Path(__file__).parent / "vocab.txt"
@@ -220,6 +210,8 @@ def _main():
     words = vocab_file.read_text().split('\n')[:-1]
     tokenizer = MinecraftTokenizer(words)
 
+
+    # Set up device (GPU if available, otherwise CPU)
     if torch.cuda.is_available():
         device = torch.device("cuda")
     elif torch.backends.mps.is_available():
@@ -231,18 +223,19 @@ def _main():
             device = torch.device("cpu")
     else:
         device = torch.device("cpu")
-    
     print(f"Using {device} device.")
 
+
+    # Set random seed for reproducibility and initialize model
     torch.manual_seed(123)
     model = MinecraftGPT(cfg)
     model.to(device)
-
+    # Print total number of parameters in the model
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Total number of parameters: {total_params:,}")
 
 
-    # Training Loop
+    # Initialize dataset and data loaders
     manager = QuickdrawManager()
     train_data = manager.sample_images(n=345000, seed=42)
     val_data = manager.sample_images(n=34500, seed=123)
@@ -257,8 +250,6 @@ def _main():
         batch_size=64, max_length=cfg["context_length"] - 1,
         drop_last=False, shuffle=False, num_workers=0
     )
-    
-
     print(f"Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
 
     torch.manual_seed(123)  # For reproducibility due to the shuffling in the data loader
@@ -266,12 +257,12 @@ def _main():
     with torch.no_grad():
         train_loss = calc_loss_loader(train_loader, model, device)
         val_loss = calc_loss_loader(val_loader, model, device)
-
     print("Training loss:", train_loss)
     print("Validation loss:", val_loss)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=0.00175, weight_decay=0.1)
 
+    # Main training loop
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.00175, weight_decay=0.1)
     num_epochs = 3
     train_losses, val_losses, tokens_seen = train_model(
         model, train_loader, val_loader, optimizer, device,
