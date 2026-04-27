@@ -19,7 +19,7 @@ Checkpoint structure
 }
 """
 # Load the archive
-checkpoint = torch.load("model_and_optimizer_2.pth", map_location="cpu", weights_only=False)
+checkpoint = torch.load("model_and_optimizer_0.pth", map_location="cpu", weights_only=False)
 
 # Access the dictionary containing the actual weights
 model_weights = checkpoint["model_state_dict"]

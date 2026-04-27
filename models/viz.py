@@ -4,6 +4,7 @@ import sys
 import numpy as np
 from pathlib import Path
 from .quickdraw_manager import QuickdrawManager
+import matplotlib.pyplot as plt
 
 DATA_FOLDER = Path(__file__).parent / "quickdraw"
 
@@ -29,10 +30,14 @@ def main():
         idx = np.random.randint(0, arr.shape[0])
 
     img = arr[idx].reshape(28, 28)
-    print(f"{category} (index {idx})")
-    print()
-    for row in img:
-        print("".join("#" if p else "." for p in row))
+    display = 1 - img  # invert: pixel=1 → black (0), background=0 → white (1)
+
+    fig, ax = plt.subplots(figsize=(4, 4))
+    ax.imshow(display, cmap="gray", vmin=0, vmax=1, interpolation="nearest")
+    ax.set_title(f"{category} (index {idx})")
+    ax.axis("off")
+    plt.tight_layout()
+    plt.show()
 
 
 if __name__ == "__main__":

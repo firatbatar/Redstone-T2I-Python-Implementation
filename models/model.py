@@ -4,6 +4,10 @@ import torch
 import torch.nn as nn
 import json
 
+# For visualization of generated images
+import matplotlib.pyplot as plt
+import numpy as np
+
 from .tokenizer import MinecraftTokenizer
 from .dataset_loader import MinecraftDataloader
 from .quickdraw_manager import QuickdrawManager
@@ -137,13 +141,19 @@ def generate_and_print_image(model, tokenizer, device, word):
             top_k=2,    # Only choose between black and white
             temperature=1.2
         )
+
     pixels = tokenizer.decode_pixels(token_ids.squeeze(0))      # squeeze out batch dimension.
-    
+
     side = int(len(pixels) ** 0.5)
-    print(f"[{word}]")
-    for row in range(side):
-        print("".join("#" if pixels[row * side + col] else "." for col in range(side)))
-    print()
+    grid = np.array(pixels, dtype=np.uint8).reshape(side, side)
+    img = 1 - grid  # invert: pixel=1 → black (0), background=0 → white (1)
+
+    fig, ax = plt.subplots(figsize=(4, 4))
+    ax.imshow(img, cmap="gray", vmin=0, vmax=1, interpolation="nearest")
+    ax.set_title(word)
+    ax.axis("off")
+    plt.tight_layout()
+    plt.show()
     model.train()
 
 
