@@ -130,7 +130,8 @@ def evaluate_model(model, train_loader, val_loader, device, eval_iter, class_wei
 
 
 def generate_and_print_image(model, tokenizer, device, word,
-                             temperatures=(0.5, 0.8, 1.0, 1.2, 1.5)):
+                             temperatures=(0.5, 0.8, 1.0, 1.2, 1.5),
+                             top_ks=(2, 4, 8, 16)):
     import subprocess
     from datetime import datetime
 
@@ -138,28 +139,31 @@ def generate_and_print_image(model, tokenizer, device, word,
     context_size = model.pos_emb.weight.shape[0]
     word_id = tokenizer.word_to_id[word]
 
-    grids = []
-    for temp in temperatures:
-        encoded = torch.tensor([[word_id]], device=device)
-        with torch.no_grad():
-            token_ids = generate(
-                model=model,
-                idx=encoded,
-                max_new_tokens=context_size - 1,
-                context_size=context_size,
-                top_k=2,
-                temperature=temp,
-            )
-        pixels = tokenizer.decode_pixels(token_ids.squeeze(0).cpu())
-        side = int(len(pixels) ** 0.5)
-        grid = np.array(pixels, dtype=np.uint8).reshape(side, side)
-        grids.append(1 - grid)  # invert: pixel=1 → black (0), background=0 → white (1)
+    fig, axes = plt.subplots(len(top_ks), len(temperatures),
+                             figsize=(3 * len(temperatures), 3 * len(top_ks)))
+    for row, top_k in enumerate(top_ks):
+        for col, temp in enumerate(temperatures):
+            encoded = torch.tensor([[word_id]], device=device)
+            with torch.no_grad():
+                token_ids = generate(
+                    model=model,
+                    idx=encoded,
+                    max_new_tokens=context_size - 1,
+                    context_size=context_size,
+                    top_k=top_k,
+                    temperature=temp,
+                )
+            pixels = tokenizer.decode_pixels(token_ids.squeeze(0).cpu())
+            grid = np.array(pixels, dtype=np.uint8).reshape(28, 28)
+            img = 1 - grid  # invert: pixel=1 → black (0), background=0 → white (1)
 
-    fig, axes = plt.subplots(1, len(temperatures), figsize=(3 * len(temperatures), 3))
-    for ax, img, temp in zip(axes, grids, temperatures):
-        ax.imshow(img, cmap="gray", vmin=0, vmax=1, interpolation="nearest")
-        ax.set_title(f"t={temp}")
-        ax.axis("off")
+            ax = axes[row][col]
+            ax.imshow(img, cmap="gray", vmin=0, vmax=1, interpolation="nearest")
+            ax.set_title(f"t={temp}", fontsize=8)
+            if col == 0:
+                ax.set_ylabel(f"k={top_k}", fontsize=8)
+            ax.axis("off")
+
     fig.suptitle(word)
     plt.tight_layout()
 
