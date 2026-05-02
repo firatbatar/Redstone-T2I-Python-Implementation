@@ -5,7 +5,7 @@ from .quickdraw_manager import QuickdrawManager
 IMG_SIZE = 28
 
 class MinecraftTokenizer:
-    def __init__(self, vocab, patch_size=1):
+    def __init__(self, vocab: list[str], patch_size: int = 1):
         self.word_to_id = {word: i for i, word in enumerate(vocab)}
         self.pixel_start_id = len(vocab)
         self.patch_size = patch_size
@@ -13,7 +13,10 @@ class MinecraftTokenizer:
         self._pixels_per_patch = patch_size * patch_size
         self._bit_shifts = np.arange(self._pixels_per_patch - 1, -1, -1)
 
-    def encode(self, img_data: tuple[str, int]):
+    def encode(self, img_data: tuple[str, int]) -> torch.Tensor:
+        """
+        Returns a list of token IDs representing the given image data. The first token is the word ID, followed by pixel tokens.
+        """
         word, img = QuickdrawManager.decode_img_data(img_data)
         tokens = [self.word_to_id[word]]
         p = self._patches_per_dim
@@ -24,8 +27,10 @@ class MinecraftTokenizer:
         tokens.extend([int(v) + self.pixel_start_id for v in values])
         return torch.tensor(tokens)
 
-    def decode_pixels(self, token_ids):
-        """Returns a flat list of pixel values (0 or 1) of length IMG_SIZE^2."""
+    def decode(self, token_ids: torch.Tensor) -> list[int]:
+        """
+        Returns a flat list of pixel values (0 or 1) of length IMG_SIZE^2.
+        """
         p = self._patches_per_dim
         patch_values = np.array([int(t) - self.pixel_start_id for t in token_ids[1:]])
         bits = (patch_values[:, None] >> self._bit_shifts) & 1
