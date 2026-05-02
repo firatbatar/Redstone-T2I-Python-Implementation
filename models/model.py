@@ -7,6 +7,8 @@ import json
 # For visualization of generated images
 import matplotlib.pyplot as plt
 import numpy as np
+import subprocess
+from datetime import datetime
 
 from .tokenizer import MinecraftTokenizer
 from .dataset_loader import MinecraftDataloader
@@ -129,9 +131,12 @@ def evaluate_model(model, train_loader, val_loader, device, eval_iter):
 def generate_and_print_image(model, tokenizer, device, word,
                              temperatures=(0.5, 0.8, 1.0, 1.2, 1.5),
                              top_ks=(2, 4, 8, 16)):
-    import subprocess
-    from datetime import datetime
+    """
+    Generates an image for the given word using different temperature and top_k settings, 
+    and saves the resulting grid of images to a file.
 
+    The generated image grid is also displayed using the default image viewer and in Jupyter notebooks (if available).
+    """
     model.eval()
     context_size = model.pos_emb.weight.shape[0]
     word_id = tokenizer.word_to_id[word]
@@ -184,6 +189,12 @@ def generate_and_print_image(model, tokenizer, device, word,
 
 def train_model(model, train_loader, val_loader, optimizer, device, num_epochs,
                        eval_freq, eval_iter, start_word, tokenizer):
+    """
+    Train the model and evaluate on the training and validation set every eval_freq steps. 
+    Also generates an image for the start word after each epoch.
+
+    Returns lists of training losses, validation losses, and tokens seen at each evaluation step.
+    """
 
     train_losses, val_losses, track_tokens_seen = [], [], []
     tokens_seen, global_step = 0, -1
