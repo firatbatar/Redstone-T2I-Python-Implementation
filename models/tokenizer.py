@@ -6,6 +6,8 @@ IMG_SIZE = 28
 
 class MinecraftTokenizer:
     def __init__(self, vocab: list[str], patch_size: int = 1):
+        if IMG_SIZE % patch_size != 0:
+            raise ValueError(f"patch_size {patch_size} must divide {IMG_SIZE}")
         self.word_to_id = {word: i for i, word in enumerate(vocab)}
         self.pixel_start_id = len(vocab)
         self.patch_size = patch_size
