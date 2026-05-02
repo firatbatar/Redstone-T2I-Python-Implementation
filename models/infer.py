@@ -40,21 +40,7 @@ def infer(word, checkpoint_path="model_and_optimizer.pth"):
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     state_dict = checkpoint["model_state_dict"] if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint else checkpoint
 
-    has_affine = any(v.__class__.__name__ == "AffineQuantizedTensor" for v in state_dict.values())
-    has_layernorm_q = any('scale_factor' in k for k in state_dict.keys())
-    is_quantized = has_affine or has_layernorm_q
-
-    if is_quantized:
-        import torch.nn as nn
-        from torchao.quantization import quantize_, Int8WeightOnlyConfig
-        from .transformerblock import LayerNorm
-        quantize_(model, Int8WeightOnlyConfig(), filter_fn=lambda m, _: isinstance(m, nn.Linear))
-        quantize_(model, Int8WeightOnlyConfig(), filter_fn=lambda m, _: isinstance(m, nn.Embedding))
-        for module in model.modules():
-            if isinstance(module, LayerNorm):
-                module.quantize()
-
-    model.load_state_dict(state_dict, assign=is_quantized)
+    model.load_state_dict(state_dict)
     model.to(device)
 
     generate_and_print_image(model, tokenizer, device, word)

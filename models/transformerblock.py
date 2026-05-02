@@ -86,30 +86,11 @@ class LayerNorm(nn.Module):
         self.scale = nn.Parameter(torch.ones(emb_dim))
         self.shift = nn.Parameter(torch.zeros(emb_dim))
 
-    def quantize(self):
-        with torch.no_grad():
-            scale_factor = (self.scale.abs().max().clamp(min=1e-8) / 127).reshape(1)
-            scale_q = (self.scale.data / scale_factor).round().clamp(-128, 127).to(torch.int8)
-            shift_factor = (self.shift.abs().max().clamp(min=1e-8) / 127).reshape(1)
-            shift_q = (self.shift.data / shift_factor).round().clamp(-128, 127).to(torch.int8)
-        del self._parameters['scale']
-        del self._parameters['shift']
-        self.register_buffer('scale', scale_q)
-        self.register_buffer('shift', shift_q)
-        self.register_buffer('scale_factor', scale_factor)
-        self.register_buffer('shift_factor', shift_factor)
-
     def forward(self, x):
         mean = x.mean(dim=-1, keepdim=True)
         var = x.var(dim=-1, keepdim=True, unbiased=False)
         norm_x = (x - mean) / torch.sqrt(var + self.eps)
-        if self.scale.dtype == torch.int8:
-            scale = self.scale.to(x.dtype) * self.scale_factor.to(x.dtype)
-            shift = self.shift.to(x.dtype) * self.shift_factor.to(x.dtype)
-        else:
-            scale = self.scale
-            shift = self.shift
-        return scale * norm_x + shift
+        return self.scale * norm_x + self.shift
 
 
 class GELU(nn.Module):
