@@ -10,6 +10,7 @@ import numpy as np
 import subprocess
 from datetime import datetime
 
+
 from .tokenizer import MinecraftTokenizer
 from .dataset_loader import MinecraftDataloader
 from .quickdraw_manager import QuickdrawManager
@@ -132,7 +133,7 @@ def generate_and_print_image(model, tokenizer, device, word,
                              temperatures=(0.5, 0.8, 1.0, 1.2, 1.5),
                              top_ks=(2, 4, 8, 16)):
     """
-    Generates an image for the given word using different temperature and top_k settings, 
+    Generates an image for the given word using different temperature and top_k settings,
     and saves the resulting grid of images to a file.
 
     The generated image grid is also displayed using the default image viewer and in Jupyter notebooks (if available).
@@ -190,7 +191,7 @@ def generate_and_print_image(model, tokenizer, device, word,
 def train_model(model, train_loader, val_loader, optimizer, device, num_epochs,
                        eval_freq, eval_iter, start_word, tokenizer):
     """
-    Train the model and evaluate on the training and validation set every eval_freq steps. 
+    Train the model and evaluate on the training and validation set every eval_freq steps.
     Also generates an image for the start word after each epoch.
 
     Returns lists of training losses, validation losses, and tokens seen at each evaluation step.
@@ -226,8 +227,7 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs,
             },
             f"model_and_optimizer_{epoch}.pth"
             )
-        
-        # Generate and print an image for the start word after each epoch
+
         generate_and_print_image(model, tokenizer, device, start_word)
 
     return train_losses, val_losses, track_tokens_seen
@@ -235,7 +235,7 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs,
 
 def _main():
     if not CONFIG_PATH.exists():
-        raise FileNotFoundError(f"Config file not found: {CONFIG_PATH}")        
+        raise FileNotFoundError(f"Config file not found: {CONFIG_PATH}")
     cfg = json.loads(CONFIG_PATH.read_text())
 
 
@@ -247,7 +247,6 @@ def _main():
     tokenizer = MinecraftTokenizer(words, patch_size=cfg.get("patch_size", 1))
 
 
-    # Set up device (GPU if available, otherwise CPU)
     if torch.cuda.is_available():
         device = torch.device("cuda")
     elif torch.backends.mps.is_available():
@@ -261,17 +260,14 @@ def _main():
         device = torch.device("cpu")
     print(f"Using {device} device.")
 
-
-    # Set random seed for reproducibility and initialize model
     torch.manual_seed(123)
     model = MinecraftGPT(cfg)
     model.to(device)
-    # Print total number of parameters in the model
+
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Total number of parameters: {total_params:,}")
 
 
-    # Initialize dataset and data loaders
     manager = QuickdrawManager()
     train_data = manager.sample_images(n=345000, seed=42)
     val_data = manager.sample_images(n=34500, seed=123)
@@ -296,8 +292,6 @@ def _main():
     print("Training loss:", train_loss)
     print("Validation loss:", val_loss)
 
-
-    # Main training loop
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.00175, weight_decay=0.1)
     num_epochs = 3
     train_model(
