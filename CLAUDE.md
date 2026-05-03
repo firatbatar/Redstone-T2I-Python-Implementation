@@ -46,6 +46,19 @@ cfg = {
 }
 ```
 
+## Quantization / Redstone Target
+
+The end goal is running inference entirely in Minecraft Redstone. The quantization strategy follows the same approach as CraftGPT (`../craftgpt/emulator.py`):
+
+- **Weights**: 1-byte quantized (uint8), encoded with a variable-bit-shift scheme — not standard int8
+- **Arithmetic**: 24-bit fixed-point throughout; no floating-point in the forward pass
+- **Attention softmax**: Custom float16 emulation or precomputed lookup tables
+- **Embeddings**: 3-byte format (wider range needed for input/output layers)
+- **LayerNorm**: 3-byte scale/shift values
+- **No standard `torch.quantization`** — the forward pass must be fully rewritten to use integer arithmetic compatible with Redstone circuit constraints
+
+Quantization scripts and converted weight files live in `quantized/`. `quantized/inspect_weights.py` inspects any checkpoint and prints layer names, shapes, dtypes, and per-tensor min/max/mean stats.
+
 ## Training
 
 - 100,000 train images, 5,000 validation images sampled from QuickDraw via `QuickdrawManager`
