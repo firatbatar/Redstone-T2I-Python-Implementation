@@ -1,1 +1,11 @@
-# emulate 5 million parameter model
+from math import sqrt
+
+LAYERS = 6
+HEADS = 8
+MLP_SCALE = 4
+EMBED_SIZE = 128
+HEAD_SIZE = EMBED_SIZE // HEADS
+VOCAB_SIZE = 361
+OUTPUT_SIZE = 64 # ???
+
+
