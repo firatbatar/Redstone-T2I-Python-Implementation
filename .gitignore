@@ -2,6 +2,11 @@
 quickdraw/
 # Weight files
 *.pth
+# Documents
+*.pdf
+*.tex
+*.docx
+*.doc
 # Folder that contains generated images, which are not needed to be tracked by git.
 generated/
 
