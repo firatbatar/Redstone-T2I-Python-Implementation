@@ -1,5 +1,26 @@
+"""
+This emulator implements the forward pass of the custom transformed-based model implemented in the /models directory.
+Its goal is to emulate the behavior of the model as closely as possible, including the specific fixed-point arithmetic 
+and weight encoding used in the implementation of Sammyuri, which is possibly the most memory-efficient way to run 
+such a model in Minecraft. Absolutely no floating-point arithmetic is used in the emulator.
+
+It comprises of several classes that correspond to different components of the model, such as matrix multiplication, 
+layer normalization, multi-head attention, and the feedforward network (MLP). It also utilizes a KV cache which does 
+not exist in the original model, but is necessary for efficient model execution in Minecraft.
+
+The 'run_model' function serves as the main entry point, allowing users to input a word and generate an image based on 
+that word using the model.
+
+A brief description of weights are as follows:
+- The weights for the model are stored in binary files in the "weights2/weight_files" directory. 
+Each file corresponds to a specific component of the model (e.g., layer normalization, attention, MLP) 
+and contains the weights for that component in a specific format.
+- The weights are read from the files and processed to be used in the computations of the model
+"""
+
 from math import sqrt
 
+"""Model hyperparameters and constants"""
 LAYERS = 6
 HEADS = 8
 MLP_SCALE = 4
@@ -11,6 +32,7 @@ OUTPUT_SIZE = 16
 CONTEXT = 785          # 1 word token + 784 pixel tokens (28x28)
 IMG_SIZE = 28
 
+"""Fixed-point arithmetic parameters"""
 FIXED_POINT_SIZE = 24
 FIXED_POINT_MASK = (1 << FIXED_POINT_SIZE) - 1
 MATMUL_FIXED_POINT = 18
@@ -25,6 +47,9 @@ EPS = int(1e-5 * EMBED_SIZE * (1 << (2 * MATMUL_FIXED_POINT)))
 
 
 class MatMul:
+    """
+    Provided
+    """
     def __init__(self, weights, input_size, output_size, relu=False):
         self.weights = []
         for row in weights:
