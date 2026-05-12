@@ -15,7 +15,11 @@ A brief description of weights are as follows:
 - The weights for the model are stored in binary files in the "weights2/weight_files" directory. 
 Each file corresponds to a specific component of the model (e.g., layer normalization, attention, MLP) 
 and contains the weights for that component in a specific format.
-- The weights are read from the files and processed to be used in the computations of the model
+- The weights are read from the files and processed to be used in the computations of the model. MatMul encodes
+8-bit weights in a single byte, using a specific scheme to represent the weight values and the shifts to apply during multiplication. 
+This is further explained in the MatMul class, which decodes the weights and performs the matrix multiplication using fixed-point arithmetic.
+So the weight files are just flat arrays of raw bytes. All the variable-bit-shift interpretation — treating each byte as an asymmetric 
+fixed-point multiplier — is done at load time in Python, not in the file format itself.
 """
 
 from math import sqrt
@@ -33,7 +37,7 @@ CONTEXT = 785          # 1 word token + 784 pixel tokens (28x28)
 IMG_SIZE = 28
 
 """Fixed-point arithmetic parameters"""
-FIXED_POINT_SIZE = 24
+FIXED_POINT_SIZE = 24   # 24 bits for the fixed-point representation of activations and intermediate values throughout the model.
 FIXED_POINT_MASK = (1 << FIXED_POINT_SIZE) - 1
 MATMUL_FIXED_POINT = 18
 MATMUL_EXTRA_PRECISION = 4
@@ -48,9 +52,17 @@ EPS = int(1e-5 * EMBED_SIZE * (1 << (2 * MATMUL_FIXED_POINT)))
 
 class MatMul:
     """
-    Provided
+    Encode 8 bit weights in a single byte, using the following scheme:
+        - The highest bit (128) indicates whether the weight is negative.
+        - The next 2 bits (64 and 32) indicate the right shift to apply to the product of the weight and the input (0 to 3).
+        - The next 3 bits (16, 8, and 4) indicate the integer part of the weight (0 to 7).
+        - The last 2 bits (2 and 1) indicate the fractional part of the weight (0 to 0.75 in increments of 0.25).
+    Standard int8 quantization would require a full 8-bit × 24-bit multiply per weight — very costly in Redstone. This scheme decomposes each weight 
+    into sign + shift + two tiny integers, so the actual multiply is only ever by a number 0–7. The non-uniform spacing (more values near zero) is 
+    a bonus that matches the natural distribution of transformer weights without needing any special training-time awareness.
     """
     def __init__(self, weights, input_size, output_size, relu=False):
+        """Encode the 8 bit weights into the custom format and store them for use in self.weights"""
         self.weights = []
         for row in weights:
             self.weights.append([])
@@ -78,25 +90,29 @@ class MatMul:
     def forward(self, input):
         output = []
         normed = input[:]
+
+        # Mask input to 24 bits. Sign extend to 28 bits. This prevents multiplication overflow.
         for j in range(self.input_size):
             normed[j] &= FIXED_POINT_MASK
             if normed[j] > FIXED_POINT_MASK // 2:
                 normed[j] += ((1 << MATMUL_EXTRA_PRECISION) - 1) << FIXED_POINT_SIZE
+
+        # Perform the matrix multiplication using the custom weight encoding and fixed-point arithmetic.
         for i in range(self.output_size):
             cur = 0
             for j in range(self.input_size):
                 w = self.weights[i][j]
                 big = (normed[j] * w[2]) & MATMUL_BIG_MASK
-                if big > (MATMUL_BIG_MASK // 2):
+                if big > (MATMUL_BIG_MASK // 2):    
                     big += 255 << (MATMUL_EXTRA_PRECISION + FIXED_POINT_SIZE)
                 small = (normed[j] * w[3]) & MATMUL_BIG_MASK
                 if small > (MATMUL_BIG_MASK // 2):
                     small += 255 << (MATMUL_EXTRA_PRECISION + FIXED_POINT_SIZE)
-                cont = (big >> w[1]) + (small >> (w[1] + 3))
-                cont &= FIXED_POINT_MASK
-                if w[0]:
+                cont = (big >> w[1]) + (small >> (w[1] + 3))    # apply the shifts indicated by the weight encoding
+                cont &= FIXED_POINT_MASK                        # mask back down to 24 bits
+                if w[0]:    # apply sign
                     cont = (-cont) & FIXED_POINT_MASK
-                cur += cont
+                cur += cont             # accumulate the contributions from each entry of input vector. 
                 cur &= FIXED_POINT_MASK
             if self.relu and cur > (FIXED_POINT_MASK // 2):
                 output.append(0)
