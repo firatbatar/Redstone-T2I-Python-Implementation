@@ -12,7 +12,7 @@ The 'run_model' function serves as the main entry point, allowing users to input
 that word using the model.
 
 A brief description of weights are as follows:
-- The weights for the model are stored in binary files in the "weights2/weight_files" directory. 
+- The weights for the model are stored in binary files in the "quantized/weight_files" directory.
 Each file corresponds to a specific component of the model (e.g., layer normalization, attention, MLP) 
 and contains the weights for that component in a specific format.
 - The weights are read from the files and processed to be used in the computations of the model. MatMul encodes
@@ -24,7 +24,9 @@ fixed-point multiplier — is done at load time in Python, not in the file forma
 
 from math import sqrt
 
-"""Model hyperparameters and constants"""
+# ---------------------------------------------------------------------------
+# Architecture
+# ---------------------------------------------------------------------------
 LAYERS = 6
 HEADS = 8
 MLP_SCALE = 4
@@ -36,17 +38,36 @@ OUTPUT_SIZE = 16
 CONTEXT = 785          # 1 word token + 784 pixel tokens (28x28)
 IMG_SIZE = 28
 
-"""Fixed-point arithmetic parameters"""
-FIXED_POINT_SIZE = 24   # 24 bits for the fixed-point representation of activations and intermediate values throughout the model.
+WEIGHTS_PATH = "quantized/weight_files"
+
+# ---------------------------------------------------------------------------
+# Fixed-point arithmetic
+# ---------------------------------------------------------------------------
+# All activations are 24-bit unsigned integers representing signed values in
+# two's complement. The real value of a stored integer v is v / 2^18.
+#
+#   Positive:  0x000000 – 0x7FFFFF  →  0       to  +32767.99...
+#   Negative:  0x800000 – 0xFFFFFF  →  -32768  to  -0.000004
+FIXED_POINT_SIZE = 24
 FIXED_POINT_MASK = (1 << FIXED_POINT_SIZE) - 1
 MATMUL_FIXED_POINT = 18
 MATMUL_EXTRA_PRECISION = 4
 MATMUL_BIG_MASK = (1 << (FIXED_POINT_SIZE + MATMUL_EXTRA_PRECISION)) - 1
 
+# ---------------------------------------------------------------------------
+# Precomputed reciprocal constants
+# ---------------------------------------------------------------------------
+# Integer division is avoided by multiplying with a precomputed reciprocal
+# and then right-shifting. Pattern: x / c  =  (x * round(2^N / c)) >> N
+#
+# LAYERNORM_CONST:   x / EMBED_SIZE  =  (x * LAYERNORM_CONST) >> 32
+# LAYERNORM_CONST_2: x / sqrt(EMBED_SIZE)  =  (x * LAYERNORM_CONST_2) >> 27
 LAYERNORM_CONST = int((1 << 32) / EMBED_SIZE)
 LAYERNORM_CONST_2 = int((1 << 27) / sqrt(EMBED_SIZE))
 ATT_CONST = int((1 << 26) / sqrt(HEAD_SIZE))
 
+# Epsilon added to variance before sqrt to avoid division by zero.
+# Scaled to match the variance accumulator's fixed-point space: eps * N * 2^36
 EPS = int(1e-5 * EMBED_SIZE * (1 << (2 * MATMUL_FIXED_POINT)))
 
 
@@ -144,7 +165,7 @@ class LayerNorm:
     def __init__(self, index: int):
         self.weights: list[int] = []
         self.shift: list[int] = []
-        with open(f"weights2/weight_files/layernorm/ln_{index}.bin", "rb") as f:
+        with open(f"{WEIGHTS_PATH}/layernorm/ln_{index}.bin", "rb") as f:
             for _ in range(EMBED_SIZE):
                 raw = int.from_bytes(f.read(3), byteorder="little")
                 self.weights.append(raw // 2)  # internal: gamma * 2^21
@@ -219,20 +240,20 @@ class MLP:
     def __init__(self, block_num):
         weights_up = [[] for _ in range(MLP_SCALE * EMBED_SIZE)]
         weights_down = [[] for _ in range(EMBED_SIZE)]
-        with open(f"weights2/weight_files/mlp/mlp_{block_num}_up.bin", "rb") as f:
+        with open(f"{WEIGHTS_PATH}/mlp/mlp_{block_num}_up.bin", "rb") as f:
             for i in range(MLP_SCALE * EMBED_SIZE):
                 weights_up[i] = list(f.read(EMBED_SIZE))
-        with open(f"weights2/weight_files/mlp/mlp_{block_num}_down.bin", "rb") as f:
+        with open(f"{WEIGHTS_PATH}/mlp/mlp_{block_num}_down.bin", "rb") as f:
             for i in range(EMBED_SIZE):
                 weights_down[i] = list(f.read(MLP_SCALE * EMBED_SIZE))
         self.matmul_up = MatMul(weights_up, EMBED_SIZE, MLP_SCALE * EMBED_SIZE, relu=False)
         self.matmul_down = MatMul(weights_down, MLP_SCALE * EMBED_SIZE, EMBED_SIZE)
         self.bias_up = []
-        with open(f"weights2/weight_files/mlp/mlp_{block_num}_up.bias", "rb") as f:
+        with open(f"{WEIGHTS_PATH}/mlp/mlp_{block_num}_up.bias", "rb") as f:
             for _ in range(MLP_SCALE * EMBED_SIZE):
                 self.bias_up.append(int.from_bytes(f.read(3), byteorder="little"))
         self.bias_down = []
-        with open(f"weights2/weight_files/mlp/mlp_{block_num}_down.bias", "rb") as f:
+        with open(f"{WEIGHTS_PATH}/mlp/mlp_{block_num}_down.bias", "rb") as f:
             for _ in range(EMBED_SIZE):
                 self.bias_down.append(int.from_bytes(f.read(3), byteorder="little"))
 
@@ -257,17 +278,17 @@ class Attention:
         proj  = [[] for _ in range(EMBED_SIZE)]
 
         for head in range(HEADS):
-            with open(f"weights2/weight_files/attention/att_{block_num}_h{head}_key.bin", "rb") as f:
+            with open(f"{WEIGHTS_PATH}/attention/att_{block_num}_h{head}_key.bin", "rb") as f:
                 for i in range(HEAD_SIZE):
                     key[head][i] = list(f.read(EMBED_SIZE))
-            with open(f"weights2/weight_files/attention/att_{block_num}_h{head}_value.bin", "rb") as f:
+            with open(f"{WEIGHTS_PATH}/attention/att_{block_num}_h{head}_value.bin", "rb") as f:
                 for i in range(HEAD_SIZE):
                     value[head][i] = list(f.read(EMBED_SIZE))
-            with open(f"weights2/weight_files/attention/att_{block_num}_h{head}_query.bin", "rb") as f:
+            with open(f"{WEIGHTS_PATH}/attention/att_{block_num}_h{head}_query.bin", "rb") as f:
                 for i in range(HEAD_SIZE):
                     query[head][i] = list(f.read(EMBED_SIZE))
 
-        with open(f"weights2/weight_files/attention/att_{block_num}_proj.bin", "rb") as f:
+        with open(f"{WEIGHTS_PATH}/attention/att_{block_num}_proj.bin", "rb") as f:
             for i in range(EMBED_SIZE):
                 proj[i] = list(f.read(EMBED_SIZE))
 
@@ -277,12 +298,12 @@ class Attention:
         self.matmul_proj  = MatMul(proj, EMBED_SIZE, EMBED_SIZE)
 
         self.bias_proj = []
-        with open(f"weights2/weight_files/attention/att_{block_num}_proj.bias", "rb") as f:
+        with open(f"{WEIGHTS_PATH}/attention/att_{block_num}_proj.bias", "rb") as f:
             for _ in range(EMBED_SIZE):
                 self.bias_proj.append(int.from_bytes(f.read(3), byteorder="little"))
 
         self.softmax_exp = []
-        with open("weights2/weight_files/softmax.bin", "rb") as f:
+        with open(f"{WEIGHTS_PATH}/softmax.bin", "rb") as f:
             for _ in range(1024):
                 self.softmax_exp.append(int.from_bytes(f.read(3), byteorder="little"))
 
@@ -404,7 +425,7 @@ class Block:
 class Embedding:
     def __init__(self):
         self.wte = []
-        with open("weights2/weight_files/embedding/wte.bin", "rb") as f:
+        with open(f"{WEIGHTS_PATH}/embedding/wte.bin", "rb") as f:
             for _ in range(VOCAB_SIZE):
                 row = []
                 for _ in range(EMBED_SIZE):
@@ -415,7 +436,7 @@ class Embedding:
                 self.wte.append(row)
 
         self.wpe = []
-        with open("weights2/weight_files/embedding/wpe.bin", "rb") as f:
+        with open(f"{WEIGHTS_PATH}/embedding/wpe.bin", "rb") as f:
             for _ in range(CONTEXT):
                 row = []
                 for _ in range(EMBED_SIZE):
@@ -437,13 +458,13 @@ class Embedding:
 class Unembedding:
     def __init__(self):
         weights = [[] for _ in range(VOCAB_SIZE)]
-        with open("weights2/weight_files/unembedding/lm_head.bin", "rb") as f:
+        with open(f"{WEIGHTS_PATH}/unembedding/lm_head.bin", "rb") as f:
             for i in range(VOCAB_SIZE):
                 weights[i] = list(f.read(EMBED_SIZE))
         self.lm_head = MatMul(weights, EMBED_SIZE, VOCAB_SIZE)
 
         self.softmax_exp = []
-        with open("weights2/weight_files/softmax_2.bin", "rb") as f:
+        with open(f"{WEIGHTS_PATH}/softmax_2.bin", "rb") as f:
             for _ in range(1024):
                 self.softmax_exp.append(int.from_bytes(f.read(3), byteorder="little"))
 
