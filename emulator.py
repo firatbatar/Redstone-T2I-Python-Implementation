@@ -493,15 +493,27 @@ class Unembedding:
         return output
 
 
-class PRNG:
+class LCG:
+    """
+    A simple linear congruential generator (LCG) for pseudorandom number generation, using Knuth's MMIX constants.
+    
+    Recursive formula: 
+        X_{n+1} = (a * X_n + c) mod m
+    
+    where:
+        - a = 6364136223846793005 (multiplier)
+        - c = 1442695040888963407 (increment)
+        - m = 2^64 (modulus)
+    
+    The 'next' method generates the next pseudorandom number in the sequence.
+    """
     def __init__(self, seed):
-        self.seed = seed
+        self.state = seed
 
     def next(self):
-        for _ in range(256):
-            next_bit = ((self.seed >> 22) & 1) ^ ((self.seed >> 17) & 1)
-            self.seed = ((self.seed << 1) & ((1 << 23) - 1)) + next_bit
-        return self.seed
+        # Knuth's constants (from MMIX)
+        self.state = (6364136223846793005 * self.state + 1442695040888963407) % (2**64)
+        return self.state
 
 
 class Model:
