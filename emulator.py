@@ -573,7 +573,7 @@ def run_model():
 
     model = Model()
     seed = int(input("Enter RNG seed: "))
-    rng = PRNG(seed)
+    rng = LCG(seed)
 
     while True:
         word = input("Enter a word: ").strip().lower()
