@@ -207,6 +207,7 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs,
             optimizer.zero_grad()
             loss = calc_loss_batch(input_batch, target_batch, model, device)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             tokens_seen += input_batch.numel()
             global_step += 1
@@ -287,8 +288,8 @@ def _main():
     torch.manual_seed(123)  # For reproducibility due to the shuffling in the data loader
 
     with torch.no_grad():
-        train_loss = calc_loss_loader(train_loader, model, device)
-        val_loss = calc_loss_loader(val_loader, model, device)
+        train_loss = calc_loss_loader(train_loader, model, device, num_batches=20)
+        val_loss = calc_loss_loader(val_loader, model, device, num_batches=20)
     print("Training loss:", train_loss)
     print("Validation loss:", val_loss)
 
