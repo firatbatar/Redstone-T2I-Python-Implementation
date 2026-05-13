@@ -1,7 +1,7 @@
 {
     "vocab_size": 361,
-    "context_length": 197,
-    "emb_dim": 128,
+    "context_length": 65,
+    "emb_dim": 256,
     "n_heads": 8,
     "n_layers": 6,
     "drop_rate": 0.1,

@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from .quickdraw_manager import QuickdrawManager
 
-IMG_SIZE = 28
+IMG_SIZE = QuickdrawManager.IMG_SIZE
 
 class MinecraftTokenizer:
     def __init__(self, vocab: list[str], patch_size: int = 1):

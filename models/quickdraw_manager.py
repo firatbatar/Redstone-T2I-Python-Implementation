@@ -1,6 +1,7 @@
 from pathlib import Path
 import json
 import numpy as np
+from PIL import Image
 
 DATA_FOLDER = Path(__file__).parent / "quickdraw"
 
@@ -72,21 +73,25 @@ class QuickdrawManager:
 
         return images
     
+    IMG_SIZE = 16
+
     @staticmethod
     def encode_img_data(label: str, img: np.ndarray) -> tuple[str, int]:
-        """Pack image data into a single integer."""
-        img_list = img.reshape(-1).astype(str).tolist()
-        img_str = "".join(img_list)
-        img_int = int(img_str, 2)
+        """Resize to IMG_SIZE with Lanczos, threshold, then pack into a single integer."""
+        pil = Image.fromarray(img.reshape(28, 28).astype(np.uint8) * 255)
+        pil = pil.resize((QuickdrawManager.IMG_SIZE, QuickdrawManager.IMG_SIZE), Image.LANCZOS)
+        resized = (np.array(pil) > 127).astype(np.uint8)
+        img_str = "".join(resized.reshape(-1).astype(str).tolist())
+        img_int = int(img_str, 2) if img_str.count("1") > 0 else 0
         return (label, img_int)
 
     @staticmethod
     def decode_img_data(data: tuple[str, int]) -> tuple[str, np.ndarray[int]]:
         """Unpack image data from a single integer."""
         label, img_int = data
-        img_str = bin(img_int)[2:].zfill(784)
-        img_list = [int(x) for x in img_str]
-        img = np.array(img_list)
+        n_pixels = QuickdrawManager.IMG_SIZE * QuickdrawManager.IMG_SIZE
+        img_str = bin(img_int)[2:].zfill(n_pixels)
+        img = np.array([int(x) for x in img_str])
         return label, img
 
 if __name__ == "__main__":

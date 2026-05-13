@@ -157,7 +157,7 @@ def generate_and_print_image(model, tokenizer, device, word,
                     temperature=temp,
                 )
             pixels = tokenizer.decode(token_ids.squeeze(0).cpu())
-            grid = np.array(pixels, dtype=np.uint8).reshape(28, 28)
+            grid = np.array(pixels, dtype=np.uint8).reshape(QuickdrawManager.IMG_SIZE, QuickdrawManager.IMG_SIZE)
             img = 1 - grid  # invert: pixel=1 → black (0), background=0 → white (1)
 
             ax = axes[row][col]
