@@ -108,6 +108,12 @@ class MatMul:
         self.relu = relu    
 
     def forward(self, input):
+        """
+        Input is a list of fixed-point integers. For each output dimension, we compute the sum over input dimensions of:
+        input[j] * weight[i][j] where weight[i][j] is decoded from the byte value as described in the __init
+        method. The products are accumulated using fixed-point arithmetic, applying the appropriate shifts and sign based 
+        on the weight encoding. If relu is True, negative outputs are set to 0 at the end.
+        """
         output = []
         normed = input[:]
 
