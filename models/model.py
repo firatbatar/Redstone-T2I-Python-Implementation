@@ -269,17 +269,17 @@ def _main():
 
 
     manager = QuickdrawManager()
-    train_data = manager.sample_images(n=345000, seed=42)
-    val_data = manager.sample_images(n=34500, seed=123)
+    train_data = manager.sample_images(n=690000, seed=42)
+    val_data = manager.sample_images(n=69000, seed=123)
 
     train_loader = MinecraftDataloader(
         train_data, tokenizer,
-        batch_size=64, max_length=cfg["context_length"] - 1,
+        batch_size=128, max_length=cfg["context_length"] - 1,
         drop_last=True, shuffle=True, num_workers=0
     )
     val_loader = MinecraftDataloader(
         val_data, tokenizer,
-        batch_size=64, max_length=cfg["context_length"] - 1,
+        batch_size=128, max_length=cfg["context_length"] - 1,
         drop_last=False, shuffle=False, num_workers=0
     )
     print(f"Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
