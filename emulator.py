@@ -29,7 +29,7 @@ from math import sqrt
 # ---------------------------------------------------------------------------
 LAYERS = 6
 HEADS = 8
-MLP_SCALE = 4
+FFN_SCALE = 4
 EMBED_SIZE = 256
 HEAD_SIZE = EMBED_SIZE // HEADS  # 32
 VOCAB_SIZE = 347
@@ -83,7 +83,6 @@ class MatMul:
     a bonus that matches the natural distribution of transformer weights without needing any special training-time awareness.
     """
     def __init__(self, weights, input_size, output_size, relu=False):
-        """Encode the 8 bit weights into the custom format and store them for use in self.weights"""
         self.weights = []
         for row in weights:
             self.weights.append([])
@@ -106,7 +105,7 @@ class MatMul:
                     self.weights[-1].append((neg, 2, 1 + (w // 8), w % 8))
         self.input_size = input_size
         self.output_size = output_size
-        self.relu = relu
+        self.relu = relu    
 
     def forward(self, input):
         output = []
@@ -115,6 +114,7 @@ class MatMul:
         # Mask input to 24 bits. Sign extend to 28 bits. This prevents multiplication overflow.
         for j in range(self.input_size):
             normed[j] &= FIXED_POINT_MASK
+            # If number is negative, add 1s to the left to preserve the sign when we later mask back down to 24 bits after multiplication.
             if normed[j] > FIXED_POINT_MASK // 2:
                 normed[j] += ((1 << MATMUL_EXTRA_PRECISION) - 1) << FIXED_POINT_SIZE
 
@@ -135,7 +135,7 @@ class MatMul:
                     cont = (-cont) & FIXED_POINT_MASK
                 cur += cont             # accumulate the contributions from each entry of input vector. 
                 cur &= FIXED_POINT_MASK
-            if self.relu and cur > (FIXED_POINT_MASK // 2):
+            if self.relu and cur > (FIXED_POINT_MASK // 2):     # if relu is enabled, set negative outputs to 0
                 output.append(0)
             else:
                 output.append(cur)
@@ -406,6 +406,11 @@ class Attention:
 
 
 class Block:
+    """
+    A single transformer block, consisting of layer normalization, multi-head attention, another layer normalization, and an MLP.
+    The forward pass applies these components in sequence, with residual connections after the attention and MLP 
+    (i.e. input[i] + att_diff[i])
+    """
     def __init__(self, block_num):
         self.ln_1 = LayerNorm(2 * block_num + 1)
         self.att  = Attention(block_num)

@@ -2,9 +2,10 @@ import os
 import sys
 import torch
 
+
 LAYERS = 6
 HEADS = 8
-MLP_SCALE = 4
+FFN_SCALE = 4
 EMBED_SIZE = 256
 HEAD_SIZE = EMBED_SIZE // HEADS  # 32
 VOCAB_SIZE = 347
@@ -13,7 +14,7 @@ MATMUL_FIXED_POINT = 18
 FIXED_POINT_SIZE = 24
 FIXED_POINT_MASK = (1 << FIXED_POINT_SIZE) - 1
 
-OUT_DIR = "weights2/weight_files"
+OUT_DIR = "weight_files/"
 
 
 def _decode_weight_byte(b):
@@ -43,6 +44,9 @@ MAX_WEIGHT = max(abs(v) for v in WEIGHT_TABLE)  # ~0.469
 
 
 def quantize_weight(v):
+    """
+    Quantize a single float weight to the nearest representable byte value.
+    """
     return min(range(256), key=lambda b: (WEIGHT_TABLE[b] - v) ** 2)
 
 
