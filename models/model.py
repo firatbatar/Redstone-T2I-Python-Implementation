@@ -188,7 +188,7 @@ def generate_and_print_image(model, tokenizer, device, word,
     model.train()
 
 
-def train_model(model, train_loader, val_loader, optimizer, device, num_epochs,
+def train_model(model, train_loader, val_loader, optimizer, scheduler, device, num_epochs,
                        eval_freq, eval_iter, start_word, tokenizer):
     """
     Train the model and evaluate on the training and validation set every eval_freq steps.
@@ -209,6 +209,7 @@ def train_model(model, train_loader, val_loader, optimizer, device, num_epochs,
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
+            scheduler.step()
             tokens_seen += input_batch.numel()
             global_step += 1
 
@@ -295,8 +296,10 @@ def _main():
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.00175, weight_decay=0.1)
     num_epochs = 3
+    total_steps = num_epochs * len(train_loader)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=1e-5)
     train_model(
-        model, train_loader, val_loader, optimizer, device,
+        model, train_loader, val_loader, optimizer, scheduler, device,
         num_epochs=num_epochs, eval_freq=100, eval_iter=20,
         start_word="apple", tokenizer=tokenizer
     )
