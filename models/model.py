@@ -163,9 +163,10 @@ def generate_and_print_image(model, tokenizer, device, word,
             ax = axes[row][col]
             ax.imshow(img, cmap="gray", vmin=0, vmax=1, interpolation="nearest")
             ax.set_title(f"t={temp}", fontsize=8)
-            if col == 0:
-                ax.set_ylabel(f"k={top_k}", fontsize=8)
             ax.axis("off")
+            if col == 0:
+                ax.text(-0.1, 0.5, f"k={top_k}", transform=ax.transAxes,
+                        fontsize=8, va="center", ha="right")
 
     fig.suptitle(word)
     plt.tight_layout()
