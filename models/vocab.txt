@@ -98,30 +98,3 @@ sheep
 shoe
 skull
 snail
-snake
-snowman
-soccer ball
-spider
-star
-strawberry
-suitcase
-sun
-swan
-sword
-table
-teapot
-teddy-bear
-tiger
-toilet
-tooth
-tornado
-train
-tree
-truck
-umbrella
-vase
-watermelon
-whale
-windmill
-wine glass
-zebra

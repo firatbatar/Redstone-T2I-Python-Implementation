@@ -27,16 +27,19 @@ from math import sqrt
 # ---------------------------------------------------------------------------
 # Architecture
 # ---------------------------------------------------------------------------
-LAYERS = 6
+LAYERS = 4
 HEADS = 8
-FFN_SCALE = 4
-EMBED_SIZE = 256
-HEAD_SIZE = EMBED_SIZE // HEADS  # 32
-VOCAB_SIZE = 347
-PIXEL_START_ID = 345   # token IDs 345 and 346 are the two pixel values (0 and 1)
-OUTPUT_SIZE = 16
-CONTEXT = 785          # 1 word token + 784 pixel tokens (28x28)
-IMG_SIZE = 28
+MLP_SCALE = 4
+EMBED_SIZE = 128
+HEAD_SIZE = EMBED_SIZE // HEADS
+VOCAB_SIZE = 116
+PIXEL_START_ID = 100   # 100 word tokens; patch tokens start here
+PATCH_SIZE = 2
+PIXELS_PER_PATCH = PATCH_SIZE * PATCH_SIZE   # 4 pixels per patch
+NUM_PATCH_TOKENS = 1 << PIXELS_PER_PATCH     # 16 possible patch values
+OUTPUT_SIZE = NUM_PATCH_TOKENS               # top-k covers all patch tokens
+CONTEXT = 65           # 1 word token + 64 patch tokens (8x8 patch grid)
+IMG_SIZE = 16          # 8 patches × patch_size 2 = 16 pixels per side
 
 WEIGHTS_PATH = "quantized/weight_files"
 
@@ -552,7 +555,7 @@ class Model:
 
 
 def sample_pixel(top_k, rng):
-    """Sample a pixel token (PIXEL_START_ID or PIXEL_START_ID+1) from top-k output."""
+    """Sample a patch token (PIXEL_START_ID … PIXEL_START_ID+NUM_PATCH_TOKENS-1) from top-k output."""
     cur = rng.next()
     for j in range(OUTPUT_SIZE - 1, -1, -1):
         token_id = top_k[j] & 2047
@@ -569,8 +572,21 @@ def sample_pixel(top_k, rng):
     return best & 2047
 
 
+def decode_patches(patch_values):
+    """Convert a list of 64 patch token values (0-15) into a flat 16×16 pixel list (0/1)."""
+    p = IMG_SIZE // PATCH_SIZE
+    grid = [[0] * IMG_SIZE for _ in range(IMG_SIZE)]
+    for idx, v in enumerate(patch_values):
+        pr, pc = divmod(idx, p)
+        for pi in range(PATCH_SIZE):
+            for pj in range(PATCH_SIZE):
+                bit_pos = PIXELS_PER_PATCH - 1 - (pi * PATCH_SIZE + pj)
+                grid[pr * PATCH_SIZE + pi][pc * PATCH_SIZE + pj] = (v >> bit_pos) & 1
+    return [pixel for row in grid for pixel in row]
+
+
 def print_image(pixels):
-    """Print a flat list of 784 pixel values (0/1) as 28x28 ASCII art."""
+    """Print a flat list of 256 pixel values (0/1) as 16×16 ASCII art."""
     for row in range(IMG_SIZE):
         print("".join("#" if pixels[row * IMG_SIZE + col] else "." for col in range(IMG_SIZE)))
 
@@ -601,14 +617,15 @@ def run_model():
         print(f"Generating image for '{word}'...")
         model.process(word_id)
 
-        pixels = []
-        nxt = PIXEL_START_ID  # start by predicting first pixel
-        for _ in range(IMG_SIZE * IMG_SIZE):
+        patches = []
+        nxt = PIXEL_START_ID  # start by predicting first patch token
+        num_patches = (IMG_SIZE // PATCH_SIZE) ** 2
+        for _ in range(num_patches):
             top_k = model.process(nxt)
             nxt = sample_pixel(top_k, rng)
-            pixels.append(nxt - PIXEL_START_ID)
+            patches.append(nxt - PIXEL_START_ID)
 
-        print_image(pixels)
+        print_image(decode_patches(patches))
 
 
 if __name__ == "__main__":
