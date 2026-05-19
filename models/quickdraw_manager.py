@@ -4,9 +4,13 @@ import numpy as np
 from PIL import Image
 
 DATA_FOLDER = Path(__file__).parent / "quickdraw"
+VOCAB_FILE = Path(__file__).parent / "vocab.txt"
 
 class QuickdrawManager:
     def __init__(self, data_folder: Path = DATA_FOLDER, categories: list[str] | None = None):
+        if categories is None and VOCAB_FILE.exists():
+            categories = VOCAB_FILE.read_text().splitlines()
+            categories = [c for c in categories if c]
         if not data_folder.exists():
             raise FileNotFoundError(f"Data folder not found: {data_folder}")
 

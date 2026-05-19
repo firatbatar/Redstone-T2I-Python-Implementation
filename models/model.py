@@ -271,28 +271,7 @@ def _main():
     print(f"Total number of parameters: {total_params:,}")
 
 
-    manager = QuickdrawManager(categories=[
-        "airplane", "apple", "axe", "backpack", "banana", "baseball bat",
-        "basketball", "bear", "bee", "bicycle", "bird", "birthday cake",
-        "book", "bread", "bridge", "bus", "butterfly", "cactus", "cake",
-        "camel", "camera", "campfire", "car", "castle", "cat", "clock",
-        "cloud", "coffee cup", "computer", "cookie", "cow", "crab", "crown",
-        "cup", "diamond", "dog", "dolphin", "donut", "door", "dragon",
-        "drums", "duck", "elephant", "eye", "fish", "flamingo", "flower",
-        "fork", "frog", "giraffe", "guitar", "hamburger", "hammer", "hand",
-        "hat", "headphones", "helicopter", "horse", "hot dog", "hourglass",
-        "house", "ice cream", "kangaroo", "key", "knife", "ladder", "laptop",
-        "leaf", "light bulb", "lighthouse", "lion", "lobster", "map",
-        "microphone", "monkey", "moon", "mountain", "mouse", "mushroom",
-        "octopus", "owl", "palm tree", "panda", "pencil", "penguin", "piano",
-        "pig", "pineapple", "pizza", "rabbit", "rainbow", "rhinoceros",
-        "sailboat", "sandwich", "scissors", "shark", "sheep", "shoe",
-        "skull", "snail", "snake", "snowman", "soccer ball", "spider",
-        "star", "strawberry", "suitcase", "sun", "swan", "sword", "table",
-        "teapot", "teddy-bear", "tiger", "toilet", "tooth", "tornado",
-        "train", "tree", "truck", "umbrella", "vase", "watermelon",
-        "whale", "windmill", "wine glass", "zebra",
-    ])
+    manager = QuickdrawManager()
     train_data = manager.sample_images(n=5000000, seed=42)
     val_data = manager.sample_images(n=500000, seed=123)
 
