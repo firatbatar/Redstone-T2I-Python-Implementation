@@ -6,7 +6,7 @@ from PIL import Image
 DATA_FOLDER = Path(__file__).parent / "quickdraw"
 
 class QuickdrawManager:
-    def __init__(self, data_folder: Path = DATA_FOLDER):
+    def __init__(self, data_folder: Path = DATA_FOLDER, categories: list[str] | None = None):
         if not data_folder.exists():
             raise FileNotFoundError(f"Data folder not found: {data_folder}")
 
@@ -16,13 +16,16 @@ class QuickdrawManager:
         else:
             self.sizes = {}
             for npz_path in sorted(self.data_folder.glob("*.npz")):
-                category = npz_path.stem    
+                category = npz_path.stem
                 with np.load(npz_path, mmap_mode="r") as f:
                     arr = f[f.files[0]]
                     self.sizes[category] = arr.shape[0]
 
             (data_folder / "_data_shape.json").write_text(json.dumps(self.sizes))
-        
+
+        if categories is not None:
+            self.sizes = {k: v for k, v in self.sizes.items() if k in categories}
+
         self._sizes = self.sizes.copy()
         self.unseen_indices = {}
         for category, count in self.sizes.items():
