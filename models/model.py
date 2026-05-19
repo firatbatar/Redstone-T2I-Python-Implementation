@@ -130,8 +130,8 @@ def evaluate_model(model, train_loader, val_loader, device, eval_iter):
 
 
 def generate_and_print_image(model, tokenizer, device, word,
-                             temperatures=(0.5, 0.8, 1.0, 1.2, 1.5),
-                             top_ks=(2, 4, 8, 16)):
+                             temperatures=(0.8, 1.0, 1.2),
+                             top_ks=(4, 8)):
     """
     Generates an image for the given word using different temperature and top_k settings,
     and saves the resulting grid of images to a file.
@@ -271,9 +271,25 @@ def _main():
     print(f"Total number of parameters: {total_params:,}")
 
 
-    manager = QuickdrawManager()
-    train_data = manager.sample_images(n=690000, seed=42)
-    val_data = manager.sample_images(n=69000, seed=123)
+    manager = QuickdrawManager(categories=[
+        "airplane", "alarm clock", "ambulance", "angel", "ant", "apple", "axe",
+        "backpack", "banana", "barn", "baseball bat", "basketball", "bear", "bed",
+        "bee", "bicycle", "bird", "birthday cake", "book", "bread", "bridge",
+        "broom", "bus", "butterfly", "cactus", "cake", "camel", "camera",
+        "campfire", "candle", "car", "castle", "cat", "clock", "cloud",
+        "coffee cup", "compass", "cookie", "couch", "cow", "crab", "crown",
+        "cup", "diamond", "dog", "dolphin", "donut", "door", "dragon",
+        "drums", "duck", "elephant", "envelope", "eye", "fish", "flamingo",
+        "flashlight", "flower", "fork", "frog", "giraffe", "guitar", "hamburger",
+        "hammer", "hand", "hat", "headphones", "helicopter", "horse", "hot dog",
+        "hourglass", "house", "ice cream", "key", "knife", "ladder", "laptop",
+        "leaf", "light bulb", "lighthouse", "lion", "lobster", "map", "microphone",
+        "monkey", "moon", "mountain", "mouse", "mushroom", "octopus", "owl",
+        "panda", "pencil", "penguin", "piano", "pig", "pizza", "rabbit",
+        "rainbow", "shark", "skull", "snowman", "star",
+    ])
+    train_data = manager.sample_images(n=500000, seed=42)
+    val_data = manager.sample_images(n=50000, seed=123)
 
     train_loader = MinecraftDataloader(
         train_data, tokenizer,
@@ -287,6 +303,7 @@ def _main():
     )
     print(f"Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
 
+
     torch.manual_seed(123)  # For reproducibility due to the shuffling in the data loader
 
     with torch.no_grad():
@@ -295,10 +312,22 @@ def _main():
     print("Training loss:", train_loss)
     print("Validation loss:", val_loss)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=0.00175, weight_decay=0.1)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.003, weight_decay=0.1)
     num_epochs = 3
     total_steps = num_epochs * len(train_loader)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps, eta_min=1e-5)
+
+    """
+    # Load model and optimizer state from checkpoint if you want to continue training from a previous run. 
+    # Make sure to set weights_only=False to also load the optimizer state, which is important for resuming training with the same learning rate schedule.
+    checkpoint_path = Path("model_and_optimizer_2.pth")
+    if checkpoint_path.exists():
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        print(f"Loaded checkpoint from {checkpoint_path}")
+    """
+
     train_model(
         model, train_loader, val_loader, optimizer, scheduler, device,
         num_epochs=num_epochs, eval_freq=100, eval_iter=20,

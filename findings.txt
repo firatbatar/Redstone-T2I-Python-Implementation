@@ -151,11 +151,70 @@ Loss converged to ~0.097-0.099 by end of epoch 3. Train and val loss are
 nearly identical throughout, indicating no overfitting.
 
 
+Image Size Reduction
+---------------------
+Reduced output image size from 28x28 to 16x16 pixels.
+Rationale: 28x28 = 784 pixel tokens per image; 16x16 = 256 pixel tokens.
+This cuts context length from 785 to 257 and speeds up training significantly.
+Images are resized from the original 28x28 QuickDraw data using Lanczos
+resampling and thresholded at 127 to produce binary images.
+
+
+Batch Size Increase
+--------------------
+Increased batch size from 64 to 128.
+Rationale: larger batches provide more stable gradient estimates and make
+better use of GPU memory. Combined with the shorter 16x16 sequences, GPU
+utilisation improved.
+
+
+Cosine LR Scheduler
+---------------------
+Added a cosine annealing learning rate scheduler.
+Rationale: flat learning rate causes loss to plateau; cosine decay allows
+the model to make larger updates early and fine-tune at the end of training.
+This typically yields lower final loss without tuning the base LR.
+
+
+3-Class Test (baseball bat, banana, crown)
+-------------------------------------------
+To validate the training pipeline quickly, training was restricted to 3
+QuickDraw categories: "baseball bat", "banana", and "crown".
+Total images available: ~565,834 (~123k / ~308k / ~134k per class).
+Train: 450,000 images, Val: 50,000 images.
+
+Findings:
+- Model converges quickly and produces visually clear images for all 3 classes.
+- Confirms the architecture and pipeline are correct before scaling to 345 classes.
+- ZeroDivisionError encountered when train sample size exceeded total available
+  images, leaving nothing for validation. Fixed by capping sample sizes.
+
+
+Loss Function Experiments
+--------------------------
+Baseline: cross-entropy loss.
+
+MSE loss (attempted):
+  - One-hot encoded targets fed into MSE against raw logits.
+  - Poor fit for token prediction: no probabilistic interpretation, slower
+    convergence, higher final loss. Reverted.
+
+Focal loss (current):
+  - Loss = -((1 - p_correct)^gamma) * log(p_correct), gamma=2.0.
+  - Down-weights easy (high-confidence) predictions, focuses gradient on
+    hard tokens. Standard gamma=2.0 used.
+  - Rationale: most pixel tokens (background) are predicted confidently;
+    focal loss forces the model to improve on hard foreground pixels.
+  - Numerically similar to cross-entropy when the model is uncertain;
+    suppresses the dominant easy-background signal when confident.
+
+
 Next Steps / Open Questions
 ----------------------------
 - Quantization (planned)
-- Learning rate schedule (cosine decay / linear warmup)
-- Horizontal flip augmentation (effectively doubles training data for free)
+- Evaluate focal loss vs cross-entropy on image quality (visual comparison)
 - More epochs (loss may still improve slowly beyond epoch 3)
 - Per-class visual evaluation grid (one sample per class)
 - Pixel accuracy metric per class
+- Scale back to 345 classes: increase emb_dim (256→512), n_layers (6→8),
+  train longer with cosine LR schedule
