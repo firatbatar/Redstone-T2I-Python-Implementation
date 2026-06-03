@@ -1,15 +1,17 @@
+import math
 import os
 import sys
 import torch
 
 
-LAYERS = 6
+LAYERS = 4
 HEADS = 8
 FFN_SCALE = 4
-EMBED_SIZE = 256
+EMBED_SIZE = 128
 HEAD_SIZE = EMBED_SIZE // HEADS  # 32
-VOCAB_SIZE = 347
-CONTEXT = 785
+VOCAB_SIZE = 116
+CONTEXT = 65
+
 MATMUL_FIXED_POINT = 18
 FIXED_POINT_SIZE = 24
 FIXED_POINT_MASK = (1 << FIXED_POINT_SIZE) - 1
@@ -81,6 +83,20 @@ def write_embedding(path, tensor):
                 f.write(fixed.to_bytes(3, byteorder="little"))
 
 
+def write_softmax_table(path, shift):
+    """Write 1024-entry exp lookup table as 24-bit fixed-point values.
+
+    Each entry i stores round(exp(-i / 2^shift) * 2^18).
+    Attention softmax uses shift=8 (power = diff >> 10, real diff = power/256).
+    Unembedding softmax uses shift=6 (power = diff >> 12, real diff = power/64).
+    """
+    with open(path, "wb") as f:
+        for i in range(1024):
+            val = int(round(math.exp(-i / (1 << shift)) * (1 << MATMUL_FIXED_POINT)))
+            val = max(0, min(val, FIXED_POINT_MASK))
+            f.write(val.to_bytes(3, byteorder="little"))
+
+
 def write_layernorm(path, scale, shift):
     """Write LayerNorm scale and shift to a single file.
 
@@ -98,13 +114,18 @@ def write_layernorm(path, scale, shift):
 
 
 def main():
-    checkpoint_path = sys.argv[1] if len(sys.argv) > 1 else "model.pt"
+    checkpoint_path = sys.argv[1] if len(sys.argv) > 1 else "model_and_optimizer_892K_003_100C.pth"
     print(f"Loading {checkpoint_path}")
     ckpt = torch.load(checkpoint_path, map_location="cpu")
     sd = ckpt["model_state_dict"]
 
     for subdir in ["layernorm", "attention", "mlp", "embedding", "unembedding"]:
         os.makedirs(f"{OUT_DIR}/{subdir}", exist_ok=True)
+
+    # --- Softmax lookup tables ---
+    print("Softmax tables...")
+    write_softmax_table(f"{OUT_DIR}/softmax.bin",   shift=8)  # attention:    power = diff >> 10
+    write_softmax_table(f"{OUT_DIR}/softmax_2.bin", shift=6)  # unembedding:  power = diff >> 12
 
     # --- Embeddings ---
     print("Embeddings...")

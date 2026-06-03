@@ -130,8 +130,8 @@ def evaluate_model(model, train_loader, val_loader, device, eval_iter):
 
 
 def generate_and_print_image(model, tokenizer, device, word,
-                             temperatures=(0.8, 1.0, 1.2),
-                             top_ks=(4, 8)):
+                             temperatures=(1.0,),
+                             top_ks=(4,)):
     """
     Generates an image for the given word using different temperature and top_k settings,
     and saves the resulting grid of images to a file.
@@ -144,6 +144,7 @@ def generate_and_print_image(model, tokenizer, device, word,
 
     fig, axes = plt.subplots(len(top_ks), len(temperatures),
                              figsize=(3 * len(temperatures), 3 * len(top_ks)))
+    axes = np.array(axes).reshape(len(top_ks), len(temperatures))
     for row, top_k in enumerate(top_ks):
         for col, temp in enumerate(temperatures):
             encoded = torch.tensor([[word_id]], device=device)

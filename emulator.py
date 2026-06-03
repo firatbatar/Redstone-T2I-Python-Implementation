@@ -23,13 +23,14 @@ fixed-point multiplier — is done at load time in Python, not in the file forma
 """
 
 from math import sqrt
+from tqdm import tqdm
 
 # ---------------------------------------------------------------------------
 # Architecture
 # ---------------------------------------------------------------------------
 LAYERS = 4
 HEADS = 8
-MLP_SCALE = 4
+FFN_SCALING = 4
 EMBED_SIZE = 128
 HEAD_SIZE = EMBED_SIZE // HEADS
 VOCAB_SIZE = 116
@@ -41,21 +42,25 @@ OUTPUT_SIZE = NUM_PATCH_TOKENS               # top-k covers all patch tokens
 CONTEXT = 65           # 1 word token + 64 patch tokens (8x8 patch grid)
 IMG_SIZE = 16          # 8 patches × patch_size 2 = 16 pixels per side
 
+SAMPLE_TOP_K = 4       # number of top patch tokens to sample from
+SAMPLE_TEMPERATURE = 1.0  # temperature applied before softmax (1.0 = no change)
+
 WEIGHTS_PATH = "quantized/weight_files"
 
 # ---------------------------------------------------------------------------
-# Fixed-point arithmetic
+# Fixed-point arithmetic (for inputs and activation values)
 # ---------------------------------------------------------------------------
 # All activations are 24-bit unsigned integers representing signed values in
 # two's complement. The real value of a stored integer v is v / 2^18.
 #
 #   Positive:  0x000000 – 0x7FFFFF  →  0       to  +32767.99...
 #   Negative:  0x800000 – 0xFFFFFF  →  -32768  to  -0.000004
-FIXED_POINT_SIZE = 24
-FIXED_POINT_MASK = (1 << FIXED_POINT_SIZE) - 1
+ACTIVATION_SIZE = 24
+ACTIVATION_MASK = (1 << ACTIVATION_SIZE) - 1
 MATMUL_FIXED_POINT = 18
 MATMUL_EXTRA_PRECISION = 4
-MATMUL_BIG_MASK = (1 << (FIXED_POINT_SIZE + MATMUL_EXTRA_PRECISION)) - 1
+MATMUL_BIG_MASK = (1 << (ACTIVATION_SIZE + MATMUL_EXTRA_PRECISION)) - 1
+
 
 # ---------------------------------------------------------------------------
 # Precomputed reciprocal constants
@@ -63,10 +68,10 @@ MATMUL_BIG_MASK = (1 << (FIXED_POINT_SIZE + MATMUL_EXTRA_PRECISION)) - 1
 # Integer division is avoided by multiplying with a precomputed reciprocal
 # and then right-shifting. Pattern: x / c  =  (x * round(2^N / c)) >> N
 #
-# LAYERNORM_CONST:   x / EMBED_SIZE  =  (x * LAYERNORM_CONST) >> 32
+# LAYERNORM_AVG_CONST:   x / EMBED_SIZE  =  (x * LAYERNORM_CONST) >> 32
 # LAYERNORM_CONST_2: x / sqrt(EMBED_SIZE)  =  (x * LAYERNORM_CONST_2) >> 27
-LAYERNORM_CONST = int((1 << 32) / EMBED_SIZE)
-LAYERNORM_CONST_2 = int((1 << 27) / sqrt(EMBED_SIZE))
+LAYERNORM_AVG_CONST = int((1 << 32) / EMBED_SIZE)
+LAYERNORM_VAR_CONST = int((1 << 27) / sqrt(EMBED_SIZE))
 ATT_CONST = int((1 << 26) / sqrt(HEAD_SIZE))
 
 # Epsilon added to variance before sqrt to avoid division by zero.
@@ -76,14 +81,11 @@ EPS = int(1e-5 * EMBED_SIZE * (1 << (2 * MATMUL_FIXED_POINT)))
 
 class MatMul:
     """
-    Encode 8 bit weights in a single byte, using the following scheme:
-        - The highest bit (128) indicates whether the weight is negative.
-        - The next 2 bits (64 and 32) indicate the right shift to apply to the product of the weight and the input (0 to 3).
-        - The next 3 bits (16, 8, and 4) indicate the integer part of the weight (0 to 7).
-        - The last 2 bits (2 and 1) indicate the fractional part of the weight (0 to 0.75 in increments of 0.25).
-    Standard int8 quantization would require a full 8-bit × 24-bit multiply per weight — very costly in Redstone. This scheme decomposes each weight 
-    into sign + shift + two tiny integers, so the actual multiply is only ever by a number 0–7. The non-uniform spacing (more values near zero) is 
-    a bonus that matches the natural distribution of transformer weights without needing any special training-time awareness.
+    Initialization decodes weights into (neg, shift, big, small) tuples using the table provided in the quantization documentation.
+
+    Input is a vector of fixed-point values.
+
+    Returns input @ weight_matrix
     """
     def __init__(self, weights, input_size, output_size, relu=False):
         self.weights = []
@@ -111,40 +113,37 @@ class MatMul:
         self.relu = relu    
 
     def forward(self, input):
-        """
-        Input is a list of fixed-point integers. For each output dimension, we compute the sum over input dimensions of:
-        input[j] * weight[i][j] where weight[i][j] is decoded from the byte value as described in the __init
-        method. The products are accumulated using fixed-point arithmetic, applying the appropriate shifts and sign based 
-        on the weight encoding. If relu is True, negative outputs are set to 0 at the end.
-        """
+        # Output vector
         output = []
-        normed = input[:]
 
-        # Mask input to 24 bits. Sign extend to 28 bits. This prevents multiplication overflow.
+        # Copy of input vector to be sign-extended to 28 bits from 24 bits.
+        extended_input = input[:]
+
+        # Sign-extend input 24->28 bits to prevent multiplication overflow.
         for j in range(self.input_size):
-            normed[j] &= FIXED_POINT_MASK
+            extended_input[j] &= ACTIVATION_MASK
             # If number is negative, add 1s to the left to preserve the sign when we later mask back down to 24 bits after multiplication.
-            if normed[j] > FIXED_POINT_MASK // 2:
-                normed[j] += ((1 << MATMUL_EXTRA_PRECISION) - 1) << FIXED_POINT_SIZE
+            if extended_input[j] > ACTIVATION_MASK // 2:
+                extended_input[j] += ((1 << MATMUL_EXTRA_PRECISION) - 1) << ACTIVATION_SIZE
 
         # Perform the matrix multiplication using the custom weight encoding and fixed-point arithmetic.
         for i in range(self.output_size):
             cur = 0
             for j in range(self.input_size):
                 w = self.weights[i][j]
-                big = (normed[j] * w[2]) & MATMUL_BIG_MASK
-                if big > (MATMUL_BIG_MASK // 2):    
-                    big += 255 << (MATMUL_EXTRA_PRECISION + FIXED_POINT_SIZE)
-                small = (normed[j] * w[3]) & MATMUL_BIG_MASK
+                big = (extended_input[j] * w[2]) & MATMUL_BIG_MASK
+                if big > (MATMUL_BIG_MASK // 2):
+                    big += 255 << (MATMUL_EXTRA_PRECISION + ACTIVATION_SIZE)
+                small = (extended_input[j] * w[3]) & MATMUL_BIG_MASK
                 if small > (MATMUL_BIG_MASK // 2):
-                    small += 255 << (MATMUL_EXTRA_PRECISION + FIXED_POINT_SIZE)
+                    small += 255 << (MATMUL_EXTRA_PRECISION + ACTIVATION_SIZE)
                 cont = (big >> w[1]) + (small >> (w[1] + 3))    # apply the shifts indicated by the weight encoding
-                cont &= FIXED_POINT_MASK                        # mask back down to 24 bits
+                cont &= ACTIVATION_MASK                        # mask back down to 24 bits
                 if w[0]:    # apply sign
-                    cont = (-cont) & FIXED_POINT_MASK
-                cur += cont             # accumulate the contributions from each entry of input vector. 
-                cur &= FIXED_POINT_MASK
-            if self.relu and cur > (FIXED_POINT_MASK // 2):     # if relu is enabled, set negative outputs to 0
+                    cont = (-cont) & ACTIVATION_MASK
+                cur += cont             # accumulate the contributions from each entry of input vector.
+                cur &= ACTIVATION_MASK
+            if self.relu and cur > (ACTIVATION_MASK // 2):     # if relu is enabled, set negative outputs to 0
                 output.append(0)
             else:
                 output.append(cur)
@@ -181,24 +180,28 @@ class LayerNorm:
             for _ in range(EMBED_SIZE):
                 self.shift.append(int.from_bytes(f.read(3), byteorder="little"))
 
-    def forward(self, x: list[int]) -> list[int]:
+    def forward(self, input: list[int]) -> list[int]:
         # ------------------------------------------------------------------
         # Step 1: Compute the mean
         # Sign-extend each 24-bit value to 32 bits before accumulating so
         # that negative values don't inflate the sum.
         # ------------------------------------------------------------------
         total = 0
-        for v in x:
-            sign_extension = (255 << FIXED_POINT_SIZE) if v > FIXED_POINT_MASK // 2 else 0
-            total += v + sign_extension
+        for value in input:
+            sign_extended = value + (255 << ACTIVATION_SIZE) if value > ACTIVATION_MASK // 2 else 0
+            total += sign_extended
         total &= (1 << 32) - 1
+        
+        # If mean represents a negative number, take 2's complement (i.e. absolute value)
+        negative_mean = total >= (1 << (ACTIVATION_SIZE + 7))
+        if negative_mean:
+            total = (-total) & ((1 << (ACTIVATION_SIZE + 7)) - 1)
+        # Integer approximation of total / EMBED_SIZE (division is because we are taking the average)
+        mean = (total * LAYERNORM_AVG_CONST) >> 32
+        # Negate and restore back to 24 bits. If the total was positive then the mean is already fitting into 24 bits.
+        if negative_mean:
+            mean = (-mean) & ACTIVATION_MASK
 
-        negative_mean = total >= (1 << (FIXED_POINT_SIZE + 7))
-        if negative_mean:
-            total = (-total) & ((1 << (FIXED_POINT_SIZE + 7)) - 1)
-        mean = (total * LAYERNORM_CONST) >> 32
-        if negative_mean:
-            mean = (-mean) & FIXED_POINT_MASK
 
         # ------------------------------------------------------------------
         # Step 2: Compute the standard deviation
@@ -206,40 +209,44 @@ class LayerNorm:
         # Diffs are in Q18 so their squares are in Q36; EPS is pre-scaled to Q36.
         # ------------------------------------------------------------------
         variance_acc = EPS
-        for v in x:
-            diff = (v - mean) & FIXED_POINT_MASK
-            if diff > FIXED_POINT_MASK // 2:
-                diff = (-diff) & (FIXED_POINT_MASK // 2)
+        for value in input:
+            diff = (value - mean) & ACTIVATION_MASK
+            if diff > ACTIVATION_MASK // 2:
+                diff = (-diff) & (ACTIVATION_MASK // 2)
             variance_acc += diff * diff
+            # Q36 is 48 bits in total (6*2)
             variance_acc &= (1 << 48) - 1
 
         # sqrt gives sigma in Q18 space (i.e. real_sigma * 2^18).
         # In Redstone this step is a lookup table; math.sqrt emulates it.
         sigma = int(sqrt(variance_acc))
 
-        sigma = (LAYERNORM_CONST_2 * sigma) >> 27
-        sigma &= FIXED_POINT_MASK
+        # 27 bit seems to not lose much precision.
+        sigma = (LAYERNORM_VAR_CONST * sigma) >> 27
+        sigma &= ACTIVATION_MASK
 
-        inv_sigma = ((1 << (2 * MATMUL_FIXED_POINT)) // sigma) & FIXED_POINT_MASK
+        # Calculation of 1/sigma in Q18
+        inv_sigma = ((1 << (2 * MATMUL_FIXED_POINT)) // sigma) & ACTIVATION_MASK
+
 
         # ------------------------------------------------------------------
         # Step 3: Normalize, apply the learned scale (gamma), then shift (beta)
         # ------------------------------------------------------------------
         result: list[int] = []
-        for i, v in enumerate(x):
-            diff = (v - mean) & FIXED_POINT_MASK
+        for i, value in enumerate(input):
+            diff = (value - mean) & ACTIVATION_MASK
 
-            negative = diff > FIXED_POINT_MASK // 2
+            negative = diff > ACTIVATION_MASK // 2
             if negative:
-                diff = (-diff) & (FIXED_POINT_MASK // 2)
+                diff = (-diff) & (ACTIVATION_MASK // 2)
 
-            x_hat = ((diff * inv_sigma) >> MATMUL_FIXED_POINT) & (FIXED_POINT_MASK // 2)
+            x_hat = ((diff * inv_sigma) >> MATMUL_FIXED_POINT) & (ACTIVATION_MASK // 2)
 
-            out = ((x_hat * self.weights[i]) >> (MATMUL_FIXED_POINT + 3)) & (FIXED_POINT_MASK // 2)
+            out = ((x_hat * self.weights[i]) >> (MATMUL_FIXED_POINT + 3)) & (ACTIVATION_MASK // 2)
 
             if negative:
-                out = (-out) & FIXED_POINT_MASK
-            out = (out + self.shift[i]) & FIXED_POINT_MASK
+                out = (-out) & ACTIVATION_MASK
+            out = (out + self.shift[i]) & ACTIVATION_MASK
             result.append(out)
 
         return result
@@ -247,19 +254,19 @@ class LayerNorm:
 
 class MLP:
     def __init__(self, block_num):
-        weights_up = [[] for _ in range(MLP_SCALE * EMBED_SIZE)]
+        weights_up = [[] for _ in range(FFN_SCALING * EMBED_SIZE)]
         weights_down = [[] for _ in range(EMBED_SIZE)]
         with open(f"{WEIGHTS_PATH}/mlp/mlp_{block_num}_up.bin", "rb") as f:
-            for i in range(MLP_SCALE * EMBED_SIZE):
+            for i in range(FFN_SCALING * EMBED_SIZE):
                 weights_up[i] = list(f.read(EMBED_SIZE))
         with open(f"{WEIGHTS_PATH}/mlp/mlp_{block_num}_down.bin", "rb") as f:
             for i in range(EMBED_SIZE):
-                weights_down[i] = list(f.read(MLP_SCALE * EMBED_SIZE))
-        self.matmul_up = MatMul(weights_up, EMBED_SIZE, MLP_SCALE * EMBED_SIZE, relu=False)
-        self.matmul_down = MatMul(weights_down, MLP_SCALE * EMBED_SIZE, EMBED_SIZE)
+                weights_down[i] = list(f.read(FFN_SCALING * EMBED_SIZE))
+        self.matmul_up = MatMul(weights_up, EMBED_SIZE, FFN_SCALING * EMBED_SIZE, relu=False)
+        self.matmul_down = MatMul(weights_down, FFN_SCALING * EMBED_SIZE, EMBED_SIZE)
         self.bias_up = []
         with open(f"{WEIGHTS_PATH}/mlp/mlp_{block_num}_up.bias", "rb") as f:
-            for _ in range(MLP_SCALE * EMBED_SIZE):
+            for _ in range(FFN_SCALING * EMBED_SIZE):
                 self.bias_up.append(int.from_bytes(f.read(3), byteorder="little"))
         self.bias_down = []
         with open(f"{WEIGHTS_PATH}/mlp/mlp_{block_num}_down.bias", "rb") as f:
@@ -268,13 +275,13 @@ class MLP:
 
     def forward(self, input):
         res = self.matmul_up.forward(input)
-        for i in range(MLP_SCALE * EMBED_SIZE):
-            res[i] = (res[i] + self.bias_up[i]) & FIXED_POINT_MASK
-            if res[i] > FIXED_POINT_MASK // 2:  # ReLU after bias
+        for i in range(FFN_SCALING * EMBED_SIZE):
+            res[i] = (res[i] + self.bias_up[i]) & ACTIVATION_MASK
+            if res[i] > ACTIVATION_MASK // 2:  # ReLU after bias
                 res[i] = 0
         res = self.matmul_down.forward(res)
         for i in range(EMBED_SIZE):
-            res[i] = (res[i] + self.bias_down[i]) & FIXED_POINT_MASK
+            res[i] = (res[i] + self.bias_down[i]) & ACTIVATION_MASK
         return res
 
 
@@ -321,12 +328,12 @@ class Attention:
 
     def to_float16(self, value, offset=0):
         neg = False
-        if value > FIXED_POINT_MASK // 2:
+        if value > ACTIVATION_MASK // 2:
             neg = True
-            value = (-value) & (FIXED_POINT_MASK // 2)
-        for i in range(FIXED_POINT_SIZE - 1, -1, -1):
+            value = (-value) & (ACTIVATION_MASK // 2)
+        for i in range(ACTIVATION_SIZE - 1, -1, -1):
             if ((value >> i) & 1) > 0:
-                res = ((value << (FIXED_POINT_SIZE - i)) >> 14) & ((1 << 10) - 1)
+                res = ((value << (ACTIVATION_SIZE - i)) >> 14) & ((1 << 10) - 1)
                 res += (i + 9 - offset) << 10
                 res += int(neg) << 15
                 return res
@@ -346,9 +353,9 @@ class Attention:
         if b > 0:
             b = (b & ((1 << 10) - 1)) + (1 << 10)
         res = ((a * b) << offset) >> (56 + shift)
-        res = res & FIXED_POINT_MASK
+        res = res & ACTIVATION_MASK
         if neg:
-            res = (-res) & FIXED_POINT_MASK
+            res = (-res) & ACTIVATION_MASK
         return res
 
     def undo_last(self):
@@ -374,18 +381,18 @@ class Attention:
             for i, k in enumerate(self.k_cache[head]):
                 for j, q in enumerate(queries):
                     relevance[i] += self.float_mult(k[j], q, 5)
-                    relevance[i] &= FIXED_POINT_MASK
+                    relevance[i] &= ACTIVATION_MASK
 
             biggest = 0
             for i in range(len(relevance)):
                 neg = False
-                if relevance[i] > (FIXED_POINT_MASK // 2):
+                if relevance[i] > (ACTIVATION_MASK // 2):
                     neg = True
-                    relevance[i] = (-relevance[i]) & (FIXED_POINT_MASK // 2)
-                relevance[i] = ((relevance[i] * ATT_CONST) >> 23) & (FIXED_POINT_MASK // 2)
+                    relevance[i] = (-relevance[i]) & (ACTIVATION_MASK // 2)
+                relevance[i] = ((relevance[i] * ATT_CONST) >> 23) & (ACTIVATION_MASK // 2)
                 if neg:
-                    relevance[i] = (-relevance[i]) & FIXED_POINT_MASK
-                relevance[i] ^= (1 << (FIXED_POINT_SIZE - 1))
+                    relevance[i] = (-relevance[i]) & ACTIVATION_MASK
+                relevance[i] ^= (1 << (ACTIVATION_SIZE - 1))
                 biggest = max(biggest, relevance[i])
 
             output = [0] * HEAD_SIZE
@@ -394,23 +401,23 @@ class Attention:
                 power = (biggest - relevance[i]) >> 10
                 res = 0 if power >= 1024 else self.softmax_exp[power]
                 softmax_sum += res
-            softmax_sum &= FIXED_POINT_MASK
+            softmax_sum &= ACTIVATION_MASK
             softmax_sum = (1 << 39) // softmax_sum
 
             for i in range(len(relevance)):
                 power = (biggest - relevance[i]) >> 10
                 res = 0 if power >= 1024 else self.softmax_exp[power]
-                res = ((softmax_sum * res) >> 17) & (FIXED_POINT_MASK // 2)
+                res = ((softmax_sum * res) >> 17) & (ACTIVATION_MASK // 2)
                 res = self.to_float16(res, offset=4)
                 for j, v in enumerate(self.v_cache[head][i]):
                     output[j] += self.float_mult(res, v)
-                    output[j] &= FIXED_POINT_MASK
+                    output[j] &= ACTIVATION_MASK
 
             proj_input += output
 
         res = self.matmul_proj.forward(proj_input)
         for i in range(EMBED_SIZE):
-            res[i] = (res[i] + self.bias_proj[i]) & FIXED_POINT_MASK
+            res[i] = (res[i] + self.bias_proj[i]) & ACTIVATION_MASK
         return res
 
 
@@ -429,10 +436,10 @@ class Block:
     def forward(self, input):
         att_diff = self.att.forward(self.ln_1.forward(input))
         for i in range(EMBED_SIZE):
-            input[i] = (input[i] + att_diff[i]) & FIXED_POINT_MASK
+            input[i] = (input[i] + att_diff[i]) & ACTIVATION_MASK
         mlp_diff = self.mlp.forward(self.ln_2.forward(input))
         for i in range(EMBED_SIZE):
-            input[i] = (input[i] + mlp_diff[i]) & FIXED_POINT_MASK
+            input[i] = (input[i] + mlp_diff[i]) & ACTIVATION_MASK
         return input
 
 
@@ -465,7 +472,7 @@ class Embedding:
         if pos != -1:
             assert 0 <= pos < CONTEXT
             for i in range(EMBED_SIZE):
-                weights[i] = (weights[i] + self.wpe[pos][i]) & FIXED_POINT_MASK
+                weights[i] = (weights[i] + self.wpe[pos][i]) & ACTIVATION_MASK
         return weights
 
 
@@ -486,7 +493,7 @@ class Unembedding:
         logits = self.lm_head.forward(input)
         biggest = 0
         for i in range(VOCAB_SIZE):
-            logits[i] ^= (1 << (FIXED_POINT_SIZE - 1))
+            logits[i] ^= (1 << (ACTIVATION_SIZE - 1))
             biggest = max(biggest, logits[i])
         softmax_sum = 0
         for i in range(VOCAB_SIZE):
@@ -499,7 +506,7 @@ class Unembedding:
         for i in range(VOCAB_SIZE):
             power = (biggest - logits[i]) >> 12
             res = 0 if power >= 1024 else self.softmax_exp[power]
-            res = ((softmax_sum * res) >> 23) & FIXED_POINT_MASK
+            res = ((softmax_sum * res) >> 23) & ACTIVATION_MASK
             res = (1 << 11) * res + i
             for j in range(OUTPUT_SIZE):
                 if res > output[j]:
@@ -507,27 +514,18 @@ class Unembedding:
         return output
 
 
-class LCG:
-    """
-    A simple linear congruential generator (LCG) for pseudorandom number generation, using Knuth's MMIX constants.
-    
-    Recursive formula: 
-        X_{n+1} = (a * X_n + c) mod m
-    
-    where:
-        - a = 6364136223846793005 (multiplier)
-        - c = 1442695040888963407 (increment)
-        - m = 2^64 (modulus)
-    
-    The 'next' method generates the next pseudorandom number in the sequence.
-    """
+class PRNG:
     def __init__(self, seed):
-        self.state = seed
+        self.seed = seed
 
     def next(self):
-        # Knuth's constants (from MMIX)
-        self.state = (6364136223846793005 * self.state + 1442695040888963407) % (2**64)
-        return self.state
+        for i in range(256):
+            next_bit = ((self.seed >> 22) & 1) ^ ((self.seed >> 17) & 1)
+            self.seed <<= 1
+            self.seed &= ((1 << 23) - 1)
+            self.seed += next_bit
+        
+        return self.seed
 
 
 class Model:
@@ -555,21 +553,18 @@ class Model:
 
 
 def sample_pixel(top_k, rng):
-    """Sample a patch token (PIXEL_START_ID … PIXEL_START_ID+NUM_PATCH_TOKENS-1) from top-k output."""
+    """Sample a patch token from the top SAMPLE_TOP_K highest-probability entries.
+
+    top_k is sorted ascending so the highest-probability tokens are at the end.
+    """
     cur = rng.next()
-    for j in range(OUTPUT_SIZE - 1, -1, -1):
-        token_id = top_k[j] & 2047
-        if token_id < PIXEL_START_ID:
-            continue
+    pixel_tokens = [j for j in range(OUTPUT_SIZE) if (top_k[j] & 2047) >= PIXEL_START_ID]
+    for j in pixel_tokens[-SAMPLE_TOP_K:][::-1]:
         cur -= (top_k[j] >> 11)
         if cur < 0:
-            return token_id
-    # fallback: return whichever pixel token has the highest probability
-    best = max(
-        (top_k[j] for j in range(OUTPUT_SIZE) if (top_k[j] & 2047) >= PIXEL_START_ID),
-        default=top_k[0],
-    )
-    return best & 2047
+            return top_k[j] & 2047
+    # fallback: highest-probability pixel token
+    return top_k[pixel_tokens[-1]] & 2047
 
 
 def decode_patches(patch_values):
@@ -600,7 +595,7 @@ def run_model():
 
     model = Model()
     seed = int(input("Enter RNG seed: "))
-    rng = LCG(seed)
+    rng = PRNG(seed)
 
     while True:
         word = input("Enter a word: ").strip().lower()
@@ -620,7 +615,7 @@ def run_model():
         patches = []
         nxt = PIXEL_START_ID  # start by predicting first patch token
         num_patches = (IMG_SIZE // PATCH_SIZE) ** 2
-        for _ in range(num_patches):
+        for _ in tqdm(range(num_patches), desc="Generating", unit="patch"):
             top_k = model.process(nxt)
             nxt = sample_pixel(top_k, rng)
             patches.append(nxt - PIXEL_START_ID)
