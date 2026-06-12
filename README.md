@@ -3,9 +3,11 @@ This project attempts to implement a decoder-only text-to-image language model w
 
 **Multi-Class Logistic Regression Emulator**
 - https://github.com/EmreUte/multiLR-redstone
+
 **Showcases**
 - Multi-class Logistic Regression: https://www.youtube.com/watch?v=xu7tTfp_Wi8
 - Binary Arithmetic: https://www.youtube.com/watch?v=BhFFJV-35bY
+
 To overcome some of the constraints imposed by Minecraft, we utilized **MCHPRS**: https://github.com/firatbatar/MCHPRS
 
 ## Installation
