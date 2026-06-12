@@ -8,7 +8,8 @@ This project attempts to implement a decoder-only text-to-image language model w
 - Multi-class Logistic Regression: https://www.youtube.com/watch?v=xu7tTfp_Wi8
 - Binary Arithmetic: https://www.youtube.com/watch?v=BhFFJV-35bY
 
-To overcome some of the constraints imposed by Minecraft, we utilized **MCHPRS**: https://github.com/firatbatar/MCHPRS
+To overcome some of the constraints imposed by Minecraft, we utilized **MCHPRS**
+- https://github.com/firatbatar/MCHPRS
 
 ## Installation
 1. **Clone the repository**
