@@ -42,7 +42,7 @@ source .venv/bin/activate
 python -m models
 ```
 
-This trains the model on 100,000 QuickDraw images for 3 epochs and saves a checkpoint to `model_and_optimizer.pth`.
+This trains the model on 100,000 QuickDraw images for 3 epochs and saves a checkpoint to `model_and_optimizer.pth`. Training on CPU is possible, but a GPU can significantly speed-up training. We personally used the google colab A100 GPU.
 
 
 ## Inference
