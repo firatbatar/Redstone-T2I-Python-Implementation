@@ -18,7 +18,7 @@ def infer(word, checkpoint_path="model_and_optimizer.pth"):
     if not vocab_file.exists():
         raise FileNotFoundError(f"Vocab file not found: {vocab_file}")
     words = vocab_file.read_text().split('\n')[:-1]
-    tokenizer = MinecraftTokenizer(words)
+    tokenizer = MinecraftTokenizer(words, patch_size=cfg.get("patch_size", 1))
 
     if word not in tokenizer.word_to_id:
         raise ValueError(f"Unknown word '{word}'. Available words are in models/vocab.txt.")
@@ -37,11 +37,10 @@ def infer(word, checkpoint_path="model_and_optimizer.pth"):
     print(f"Using {device} device.")
 
     model = MinecraftGPT(cfg)
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-        model.load_state_dict(checkpoint["model_state_dict"])
-    else:
-        model.load_state_dict(checkpoint)
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    state_dict = checkpoint["model_state_dict"] if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint else checkpoint
+
+    model.load_state_dict(state_dict)
     model.to(device)
 
     generate_and_print_image(model, tokenizer, device, word)

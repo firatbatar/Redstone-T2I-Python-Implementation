@@ -1,7 +1,17 @@
 # Redstone T2I — Transformer Text-to-Image (Python)
+This project attempts to implement a decoder-only text-to-image language model within Minecraft. The first step in achieving this task is to implement and pretrain a PyTorch base model. This implementation can be found in './models' and consists of ~830,000 parameters. Configuration details can also be found in this directory. The second step is to emulate the Minecraft environment using Python to effectively validate and verify circuit design. This work is still in progress, and can be found in the 'emulator' branch. The last step is to implement everything in Minecraft. Although the final LLM in Minecraft is yet to be implemented, showcases of some of our designs include logistic regression and binary arithmetic calculator.
+
+**Multi-Class Logistic Regression Emulator**
+- https://github.com/EmreUte/multiLR-redstone
+
+**Showcases**
+- Multi-class Logistic Regression: https://www.youtube.com/watch?v=xu7tTfp_Wi8
+- Binary Arithmetic: https://www.youtube.com/watch?v=BhFFJV-35bY
+
+To overcome some of the constraints imposed by Minecraft, we utilized **MCHPRS**
+- https://github.com/firatbatar/MCHPRS
 
 ## Installation
-
 1. **Clone the repository**
 
    ```bash
@@ -23,10 +33,16 @@
    pip install -r requirements.txt
    ```
 
-4. **Download the QuickDraw dataset** into `models/quickdraw/` as `.npz` files (one per class).
+4. **Download the QuickDraw dataset**
+
+   Download the bitmap `.npz` files (one per class) and place them in `models/quickdraw/`.
+   Each file must be named `<class>.npz` to match a label in [`models/vocab.txt`](models/vocab.txt)
+   (e.g. `airplane.npz`, `alarm clock.npz`), for all 100 classes.
+
+   Source: https://console.cloud.google.com/storage/browser/quickdraw_dataset/full/numpy_bitmap;tab=objects?prefix=&forceOnObjectsSortingFiltering=false
+
 
 ## Training
-
 From the project root directory, activate the virtual environment and run:
 
 ```bash
@@ -34,10 +50,10 @@ source .venv/bin/activate
 python -m models
 ```
 
-This trains the model on 100,000 QuickDraw images for 3 epochs and saves a checkpoint to `model_and_optimizer.pth`.
+This trains the model on 100,000 QuickDraw images for 3 epochs and saves a checkpoint to `model_and_optimizer.pth`. Training on CPU is possible, but a GPU can significantly speed-up training. We personally used the google colab A100 GPU.
+
 
 ## Inference
-
 Generate an image for a given word:
 
 ```bash
@@ -53,8 +69,39 @@ python -m models.infer apple
 
 Prints a 28×28 ASCII image (`#`/`.`) to stdout.
 
-## Project Structure
 
+## Visualization
+Render a real image from the QuickDraw dataset to compare against the model's output.
+Saves a PNG to `generated/` and opens it:
+
+```bash
+python -m models.viz <category>          # random image from the class
+python -m models.viz <category> <index>  # specific image by index
+```
+
+Example:
+
+```bash
+python -m models.viz airplane
+python -m models.viz airplane 42
+```
+
+
+## Configuration
+Model hyperparameters (vocab size, context length, embedding dim, layers, heads, patch size)
+live in [`models/config.json`](models/config.json) and are loaded by both `model.py` and `infer.py`.
+
+
+## Quantization
+The end goal is running inference entirely in Minecraft Redstone, which has no floating-point
+hardware — only binary logic built from redstone components. The model must therefore be rewritten
+to use integer/fixed-point arithmetic, with weights quantized to a compact byte format. Standard
+`torch.quantization` is not used; the forward pass is reimplemented from scratch so every operation
+maps onto circuits the Redstone target can actually execute. This work lives on the `emulator`
+branch.
+
+
+## Project Structure
 ```
 .
 ├── models/

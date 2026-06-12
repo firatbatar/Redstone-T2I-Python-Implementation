@@ -16,7 +16,7 @@ class TransformerBlock(nn.Module):
         self.norm2 = LayerNorm(cfg["emb_dim"])
         self.drop_shortcut = nn.Dropout(cfg["drop_rate"])
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         shortcut = x
         x = self.norm1(x)
         x = self.att(x)
@@ -51,7 +51,7 @@ class MultiHeadAttention(nn.Module):
                 torch.triu(torch.ones(context_length, context_length), diagonal=1)
                 )
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, num_tokens, d_in = x.shape # [batch, input_size, embedding_dim]
         keys = self.W_key(x)
         queries = self.W_query(x)
@@ -85,21 +85,20 @@ class LayerNorm(nn.Module):
         self.eps = 1e-5
         self.scale = nn.Parameter(torch.ones(emb_dim))
         self.shift = nn.Parameter(torch.zeros(emb_dim))
-    def forward(self, x):
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         mean = x.mean(dim=-1, keepdim=True)
         var = x.var(dim=-1, keepdim=True, unbiased=False)
         norm_x = (x - mean) / torch.sqrt(var + self.eps)
         return self.scale * norm_x + self.shift
 
 
-class GELU(nn.Module):
+class RELU(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, x):
-        return 0.5 * x * (1 + torch.tanh(
-            torch.sqrt(torch.tensor(2.0 / torch.pi)) *
-            (x + 0.044715 * torch.pow(x, 3))))
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x * (x > 0)
 
 
 class FeedForward(nn.Module):
@@ -107,11 +106,11 @@ class FeedForward(nn.Module):
         super().__init__()
         self.layers = nn.Sequential(
                 nn.Linear(cfg["emb_dim"], 4 * cfg["emb_dim"]),
-                GELU(),
+                RELU(),
                 nn.Linear(4 * cfg["emb_dim"], cfg["emb_dim"])
                 )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.layers(x)
 
-__all__ = ["TransformerBlock", "MultiHeadAttention", "LayerNorm", "GELU", "FeedForward"]
+__all__ = ["TransformerBlock", "MultiHeadAttention", "LayerNorm", "RELU", "FeedForward"]
