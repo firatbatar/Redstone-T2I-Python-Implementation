@@ -89,7 +89,7 @@ The end goal is running inference entirely in Minecraft Redstone, which has no f
 hardware — only binary logic built from redstone components. The model must therefore be rewritten
 to use integer/fixed-point arithmetic, with weights quantized to a compact byte format. Standard
 `torch.quantization` is not used; the forward pass is reimplemented from scratch so every operation
-maps onto circuits the Redstone target can actually execute. This work lives on the `real-quantize`
+maps onto circuits the Redstone target can actually execute. This work lives on the `emulator`
 branch.
 
 
