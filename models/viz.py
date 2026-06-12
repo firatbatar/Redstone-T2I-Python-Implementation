@@ -10,9 +10,9 @@ DATA_FOLDER = Path(__file__).parent / "quickdraw"
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python viz.py <category> [index]")
-        print("       python viz.py airplane")
-        print("       python viz.py airplane 42")
+        print("Usage: python -m models.viz <category> [index]")
+        print("       python -m models.viz airplane")
+        print("       python -m models.viz airplane 42")
         sys.exit(1)
 
     category = sys.argv[1]
